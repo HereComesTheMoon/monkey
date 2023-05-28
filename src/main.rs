@@ -1,9 +1,11 @@
+mod scanner;
 use std::env;
 
 use std::fs;
 use std::io;
 use std::io::{BufRead, Write};
 use std::process;
+use scanner::{Scanner, Token, TokenType};
 
 fn main() {
     println!("Hello, world!");
@@ -38,118 +40,171 @@ fn run_prompt() {
     }
 }
 
-fn run(source: String) {
-    let sc = Scanner::new(source);
-    for token in sc.into_iter() {
-        println!("{:?}", token);
-        
-    }
+fn run(source: String) -> i64 {
+    // let sc = Scanner::new(source);
+    let mut parser = Parser::new(source);
+    parser.parse()
 }
 
-struct Scanner {
+struct Parser {
+    // scanner: Scanner,
     source: String,
+    tokens: Vec<Token>,
     pos: usize,
+    last: Option<Expr>,
+    // prev: Vec<Expr>,
 }
 
-impl Iterator for Scanner {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.trim();
-        // let next_token = self.peek();
-        if let Some(token) = self.peek() {
-            self.pos += token.len;
-            Some(token)
-        } else {
-            assert!(self.source.len() <= self.pos);
-            None
-        }
-    }
-}
-
-impl Scanner {
-    fn new(source: String) -> Self {
-        Scanner {
-            source,
+impl Parser {
+    pub fn new(source: String) -> Self {
+        Parser {
+            source: source.clone(),
+            tokens: Scanner::new(source).into_iter().collect(),
             pos: 0,
+            last: None,
         }
     }
 
-    fn trim(&mut self) {
-        let s = self.source.get(self.pos..);
-        if s.is_none() {
-            assert!(self.pos <= self.source.len());
-            return
+    pub fn parse(&mut self) -> i64 {
+        // for (k, token) in self.tokens.iter().enumerate() {
+        //     println!("Pos: {}, {:?}", k, token);
+        // }
+        // println!("Tokens: {:?}", self.tokens);
+        while self.pos < self.tokens.len() {
+            let new_last = self.parse_expr();
+            assert!(new_last.is_some());
+            assert!(self.last.is_none());
+            self.last = new_last;
         }
-        self.pos += s
-        .unwrap()
-        .char_indices()
-        .take_while(|(_, c)| c.is_whitespace())
-        .map(|(i, _)| i + 1)
-        .last()
-        .unwrap_or(0);
+        // let res = self.parse_expr();
+        // println!("The result is: {}", res.eval())
+        self.last.as_ref().unwrap().eval()
     }
 
-    fn peek(&self) -> Option<Token> {
-        let pos = self.pos;
-        let s = self.source.get(pos..)?;
-        let s = s.chars().next()?;
-        #[rustfmt::skip]
-        return Some(match s {
-            '('      => Token { typ: TokenType::LeftParen,    pos, len: 1 },
-            ')'      => Token { typ: TokenType::RightParen,   pos, len: 1 },
-            '-'      => Token { typ: TokenType::Minus,        pos, len: 1 },
-            '+'      => Token { typ: TokenType::Plus,         pos, len: 1 },
-            '*'      => Token { typ: TokenType::Star,         pos, len: 1 },
-            '/'      => Token { typ: TokenType::Slash,        pos, len: 1 },
-            '0'..='9'=> self.parse_number(),
-            // ['a'..='z' | 'A'..='Z',..]                                => self.parse_identifier(pos),
-            _                                                         => {
-                println!("Unexpected char: {:?} - {:#?}", s, s);
-                todo!();
-            }
-        });
+    fn parse_expr(&mut self) -> Option<Expr> {
+        // while self.pos < self.tokens.len() {
+        //     let new_last = self.parse_expr();
+        //     assert!(new_last.is_some());
+        //     assert!(self.last.is_none());
+        //     self.last = new_last;
+        // }
+
+        println!("Token: {} — {:?}", self.pos, self.tokens[self.pos]);
+        Some(match self.tokens[self.pos].typ {
+            TokenType::LeftParen  => self.parse_group(),
+            TokenType::RightParen => return None,
+            TokenType::Minus      => self.parse_bin_expr(),
+            TokenType::Plus       => self.parse_bin_expr(),
+            TokenType::Slash      => self.parse_bin_expr(),
+            TokenType::Star       => self.parse_bin_expr(),
+            TokenType::Number     => self.parse_number(),
+        })
     }
 
-    fn parse_number(&self) -> Token {
-        let pos = self.pos;
-        let s = self.source.get(pos..).unwrap();
-        assert!(s.chars().next().unwrap().is_digit(10));
+    fn parse_bin_expr(&mut self) -> Expr {
+        let left = Box::new(self.last.take().unwrap());
+        let op = match self.tokens[self.pos].typ {
+            TokenType::Minus => BinaryType::Minus,
+            TokenType::Plus  => BinaryType::Plus,
+            TokenType::Slash => BinaryType::Slash,
+            TokenType::Star  => BinaryType::Star,
+            _                => unreachable!(),
+        };
+        self.pos += 1;
+        let last = Expr::Binary(BinaryExpr { left , op , right: Box::new(self.parse_expr().unwrap()) });
+        last
+    }
 
-        let len = s
-            .char_indices()
-            .take_while(|(_, c)| c.is_digit(10))
-            .last()
-            .map(|(i,_)| i + 1)
-            .unwrap();
-
-        Token {
-            typ: TokenType::Number,
-            pos,
-            len,
+    fn parse_number(&mut self) -> Expr {
+        let t = &self.tokens[self.pos];
+        let int = self.source[t.pos..t.pos+t.len].parse();
+        self.pos += 1;
+        if let Ok(int) = int {
+            Expr::Literal(int)
+        } else {
+            println!("Oh no!");
+            Expr::Error
         }
+    }
+
+    fn parse_group(&mut self) -> Expr {
+        assert!(matches!(self.tokens[self.pos].typ, TokenType::LeftParen));
+        self.pos += 1;
+        let inner = self.parse_expr();
+        println!("{:?}", self.tokens[self.pos]);
+        // assert!(matches!(self.tokens[self.pos].typ, TokenType::RightParen));
+        self.pos += 1;
+        return inner.unwrap()
     }
 }
 
-#[derive(Debug)]
-struct Token {
-    typ: TokenType,
-    pos: usize,
-    len: usize,
+enum Expr {
+    Literal(i64),
+    Binary(BinaryExpr),
+    Grouping(Box<Expr>),
+    Error,
 }
 
-#[derive(Debug)]
-enum TokenType {
-    // Single-character tokens.
-    LeftParen,
-    RightParen,
+struct BinaryExpr {
+    left: Box<Expr>,
+    op: BinaryType,
+    right: Box<Expr>,
+}
+
+enum BinaryType {
     Minus,
     Plus,
     Slash,
     Star,
+}
 
-    // Number
-    Number,
+
+impl Expr {
+    pub fn eval(&self) -> i64 {
+        match self {
+            Expr::Literal(num) => *num,
+            Expr::Binary(b)    => b.eval(),
+            Expr::Grouping(b)  => b.as_ref().eval(),
+            Expr::Error        => todo!(),
+        }
+    }
+}
+
+impl BinaryExpr {
+    pub fn eval(&self) -> i64 {
+        let left = self.left.eval();
+        let right = self.right.eval();
+        match self.op {
+            BinaryType::Minus => left - right,
+            BinaryType::Plus  => left + right,
+            BinaryType::Slash => left / right,
+            BinaryType::Star  => left * right,
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::run;
+
+    fn tester(s: &str, expect: i64) {
+        let res = run(s.to_string());
+        assert_eq!(res, expect);
+    }
+
+    #[test]
+    fn test_group_1() {
+        tester("1 - 1 - 1", -1);
+    }
     
-    // EOF, // unnecessary token?
+    #[test]
+    fn test_group_2() {
+        tester("(1)", 1);
+    }
+    
+    #[test]
+    fn test_group_3() {
+        tester("(1 - 1)", 0);
+    }
 }
