@@ -5,7 +5,7 @@ use std::fs;
 use std::io;
 use std::io::{BufRead, Write};
 use std::process;
-use scanner::{Scanner, Token, TokenType};
+use scanner::{Scanner, Token, TokenType, infix_to_prefix};
 
 fn main() {
     println!("Hello, world!");
@@ -47,52 +47,43 @@ fn run(source: String) -> i64 {
 }
 
 struct Parser {
-    // scanner: Scanner,
     source: String,
-    tokens: Vec<Token>,
+    tokens: Vec<Token>, // Prefix order
     pos: usize,
-    last: Option<Expr>,
-    // prev: Vec<Expr>,
 }
 
 impl Parser {
     pub fn new(source: String) -> Self {
         Parser {
             source: source.clone(),
-            tokens: Scanner::new(source).into_iter().collect(),
+            tokens: infix_to_prefix(Scanner::new(source)),
             pos: 0,
-            last: None,
         }
     }
 
     pub fn parse(&mut self) -> i64 {
+        let exp = self.parse_expr();
+        exp.unwrap().eval()
         // for (k, token) in self.tokens.iter().enumerate() {
         //     println!("Pos: {}, {:?}", k, token);
         // }
         // println!("Tokens: {:?}", self.tokens);
-        while self.pos < self.tokens.len() {
-            let new_last = self.parse_expr();
-            assert!(new_last.is_some());
-            assert!(self.last.is_none());
-            self.last = new_last;
-        }
-        // let res = self.parse_expr();
-        // println!("The result is: {}", res.eval())
-        self.last.as_ref().unwrap().eval()
-    }
-
-    fn parse_expr(&mut self) -> Option<Expr> {
         // while self.pos < self.tokens.len() {
         //     let new_last = self.parse_expr();
         //     assert!(new_last.is_some());
         //     assert!(self.last.is_none());
         //     self.last = new_last;
         // }
+        // let res = self.parse_expr();
+        // println!("The result is: {}", res.eval())
+        // self.last.as_ref().unwrap().eval()
+    }
 
-        println!("Token: {} — {:?}", self.pos, self.tokens[self.pos]);
+    fn parse_expr(&mut self) -> Option<Expr> {
+        // println!("Token: {} — {:?}", self.pos, self.tokens[self.pos]);
         Some(match self.tokens[self.pos].typ {
             TokenType::LeftParen  => self.parse_group(),
-            TokenType::RightParen => return None,
+            TokenType::RightParen => unreachable!(),
             TokenType::Minus      => self.parse_bin_expr(),
             TokenType::Plus       => self.parse_bin_expr(),
             TokenType::Slash      => self.parse_bin_expr(),
@@ -102,7 +93,6 @@ impl Parser {
     }
 
     fn parse_bin_expr(&mut self) -> Expr {
-        let left = Box::new(self.last.take().unwrap());
         let op = match self.tokens[self.pos].typ {
             TokenType::Minus => BinaryType::Minus,
             TokenType::Plus  => BinaryType::Plus,
@@ -111,8 +101,9 @@ impl Parser {
             _                => unreachable!(),
         };
         self.pos += 1;
-        let last = Expr::Binary(BinaryExpr { left , op , right: Box::new(self.parse_expr().unwrap()) });
-        last
+        let left = Box::new(self.parse_expr().unwrap());
+        let right = Box::new(self.parse_expr().unwrap());
+        Expr::Binary(BinaryExpr { left , op , right })
     }
 
     fn parse_number(&mut self) -> Expr {
@@ -132,9 +123,9 @@ impl Parser {
         self.pos += 1;
         let inner = self.parse_expr();
         println!("{:?}", self.tokens[self.pos]);
-        // assert!(matches!(self.tokens[self.pos].typ, TokenType::RightParen));
+        assert!(matches!(self.tokens[self.pos].typ, TokenType::RightParen));
         self.pos += 1;
-        return inner.unwrap()
+        Expr::Grouping(Box::new(inner.unwrap()))
     }
 }
 

@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, cmp::Ordering};
 
 #[derive(Clone)]
 pub struct Scanner {
@@ -54,7 +54,15 @@ pub fn infix_to_prefix(sc: Scanner) -> Vec<Token> {
         }
 
         while !stack.is_empty() {
-            if token.typ <= stack.last().unwrap().typ {
+            // TODO: Think about operator associativity
+            // Right now everything is left associative, which is weird for exponentials
+            // let top = stack.last().unwrap().typ;
+            // match TokenType::cmp(&token.typ, top) {
+            //     Ordering::Less    => tokens.push(stack.pop().unwrap()),
+            //     Ordering::Equal   => todo!(),
+            //     Ordering::Greater => todo!(),
+            // };
+            if token.typ < stack.last().unwrap().typ {
                 tokens.push(stack.pop().unwrap());
                 continue
             }
@@ -66,8 +74,8 @@ pub fn infix_to_prefix(sc: Scanner) -> Vec<Token> {
     tokens.extend(stack.into_iter().rev());
 
     tokens.reverse();
-    // println!("Final Tokens:");
-    // print_tokens(&sc, &tokens);
+    println!("Final Tokens:");
+    print_tokens(&sc, &tokens);
     tokens
 }
 
@@ -124,7 +132,7 @@ impl Scanner {
             '/'      => Token { typ: TokenType::Slash,        pos, len: 1 },
             '0'..='9'=> self.parse_number(),
             // ['a'..='z' | 'A'..='Z',..]                                => self.parse_identifier(pos),
-            _                                                         => {
+            _        => {
                 println!("Unexpected char: {:?} - {:#?}", s, s);
                 todo!();
             }
@@ -205,8 +213,14 @@ impl TokenType {
 }
 
 impl PartialOrd for TokenType {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.precedence().cmp(&other.precedence()))
+    }
+}
+
+impl Ord for TokenType {
+    fn cmp(&self, other: &Self) -> Ordering {
+        TokenType::partial_cmp(&self, other).unwrap()
     }
 }
 
@@ -263,6 +277,16 @@ mod test {
             },
             Token {
                 typ: TokenType::Plus,
+                pos: 11,
+                len: 1,
+            },
+            Token {
+                typ: TokenType::Plus,
+                pos: 7,
+                len: 1,
+            },
+            Token {
+                typ: TokenType::Plus,
                 pos: 3,
                 len: 1,
             },
@@ -272,18 +296,8 @@ mod test {
                 len: 1,
             },
             Token {
-                typ: TokenType::Plus,
-                pos: 7,
-                len: 1,
-            },
-            Token {
                 typ: TokenType::Number,
                 pos: 5,
-                len: 1,
-            },
-            Token {
-                typ: TokenType::Plus,
-                pos: 11,
                 len: 1,
             },
             Token {
@@ -309,9 +323,16 @@ mod test {
 
     #[test]
     fn shunting_yard3() {
-        let s = "3 + 4 * 2 / ( 1 - 5 ) + 6"; // + 3 + * 4 / 2 ( - 1 5 ) 6
+        // + 3 + * 4 / 2 ( - 1 5 ) 6
+        // + + 3 / * 4 2 ( - 1 5 ) 6
+        let s = "3 + 4 * 2 / ( 1 - 5 ) + 6";
         let sc = Scanner::new(s.into());
         let desired = vec![
+            Token {
+                typ: TokenType::Plus,
+                pos: 22,
+                len: 1,
+            },
             Token {
                 typ: TokenType::Plus,
                 pos: 2,
@@ -323,8 +344,8 @@ mod test {
                 len: 1,
             },
             Token {
-                typ: TokenType::Plus,
-                pos: 22,
+                typ: TokenType::Slash,
+                pos: 10,
                 len: 1,
             },
             Token {
@@ -335,11 +356,6 @@ mod test {
             Token {
                 typ: TokenType::Number,
                 pos: 4,
-                len: 1,
-            },
-            Token {
-                typ: TokenType::Slash,
-                pos: 10,
                 len: 1,
             },
             Token {
@@ -380,6 +396,42 @@ mod test {
         ];
 
         let res = infix_to_prefix(sc);
+        assert_eq!(res, desired);
+    }
+
+    #[test]
+    fn shunting_yard4() {
+        let s = "1 - 1 - 1"; // - - 1 1 1
+        let sc = Scanner::new(s.into());
+        let res = infix_to_prefix(sc);
+        let desired = vec![
+            Token {
+                typ: TokenType::Minus,
+                pos: 6,
+                len: 1,
+            },
+            Token {
+                typ: TokenType::Minus,
+                pos: 2,
+                len: 1,
+            },
+            Token {
+                typ: TokenType::Number,
+                pos: 0,
+                len: 1,
+            },
+            Token {
+                typ: TokenType::Number,
+                pos: 4,
+                len: 1,
+            },
+            Token {
+                typ: TokenType::Number,
+                pos: 8,
+                len: 1,
+            },
+        ];
+
         assert_eq!(res, desired);
     }
 }
