@@ -1,14 +1,31 @@
-use std::cmp::Ordering;
+use crate::tokens::{Token, TokenType};
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Tokenizer<'a> {
     source: &'a str,
     pos: usize,
 }
 
+impl<'a> Tokenizer<'a> {
+    pub fn new(source: &'a str) -> Self {
+        let mut sc = Tokenizer { source, pos: 0 };
+        sc.trim();
+        sc
+    }
+}
+
 impl Tokenizer<'_> {
-    pub fn get_infix(self) -> Vec<Token> {
-        self.into_iter().collect()
+    pub fn get_infix(mut self) -> Vec<Token> {
+        let mut tokens = vec![];
+
+        while let Some(token) = self.peek() {
+            self.pos += token.len;
+            self.trim();
+            tokens.push(token);
+        }
+        
+        assert!(self.source.len() <= self.pos);
+        tokens
     }
 
     pub fn infix_to_prefix(self) -> Vec<Token> {
@@ -92,29 +109,6 @@ impl Tokenizer<'_> {
                 .collect::<String>()
         );
     }
-}
-
-impl Iterator for Tokenizer<'_> {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(token) = self.peek() {
-            self.pos += token.len;
-            self.trim();
-            Some(token)
-        } else {
-            assert!(self.source.len() <= self.pos);
-            None
-        }
-    }
-}
-
-impl<'a> Tokenizer<'a> {
-    pub fn new(source: &'a str) -> Self {
-        let mut sc = Tokenizer { source, pos: 0 };
-        sc.trim();
-        sc
-    }
 
     fn trim(&mut self) {
         let s = self.source.get(self.pos..);
@@ -131,7 +125,7 @@ impl<'a> Tokenizer<'a> {
             .unwrap_or(0);
     }
 
-    pub fn peek(&self) -> Option<Token> {
+    fn peek(&self) -> Option<Token> {
         let pos = self.pos;
         let s = self.source.get(pos..)?;
         let s = s.chars().next()?;
@@ -172,54 +166,6 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Token {
-    pub typ: TokenType,
-    pub pos: usize,
-    pub len: usize,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum TokenType {
-    // Single-character tokens.
-    LeftParen,
-    RightParen,
-    Minus,
-    Plus,
-    Slash,
-    Star,
-
-    // Number
-    Number,
-    // EOF, // unnecessary token?
-}
-
-impl TokenType {
-    fn precedence(&self) -> u8 {
-        #[rustfmt::skip]
-        return match &self {
-            TokenType::LeftParen  => 4,
-            TokenType::RightParen => 0,
-            TokenType::Minus      => 2,
-            TokenType::Plus       => 2,
-            TokenType::Slash      => 3,
-            TokenType::Star       => 3,
-            TokenType::Number     => 9,
-        };
-    }
-}
-
-impl PartialOrd for TokenType {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.precedence().cmp(&other.precedence()))
-    }
-}
-
-impl Ord for TokenType {
-    fn cmp(&self, other: &Self) -> Ordering {
-        TokenType::partial_cmp(&self, other).unwrap()
-    }
-}
 
 #[cfg(test)]
 mod test {

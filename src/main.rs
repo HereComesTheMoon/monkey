@@ -1,11 +1,13 @@
 mod tokenizer;
+mod tokens;
 use std::env;
 
 use std::fs;
 use std::io;
 use std::io::{BufRead, Write};
 use std::process;
-use tokenizer::{Tokenizer, Token, TokenType};
+use tokenizer::Tokenizer;
+use tokens::{Token, TokenType};
 
 fn main() {
     println!("Hello, world!");
