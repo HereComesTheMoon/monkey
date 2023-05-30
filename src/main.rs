@@ -57,7 +57,8 @@ struct Parser {
 
 impl Parser {
     pub fn new(source: String) -> Self {
-        let tokens = infix_to_prefix(Lexer::new(&source));
+        // let tokens = infix_to_prefix(Lexer::new(&source));
+        let tokens = Lexer::new(&source).tokens;
         Parser {
             source,
             tokens,

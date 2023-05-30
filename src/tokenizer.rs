@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 #[derive(Clone)]
 pub struct Tokenizer<'a> {
-    pub source: &'a str,
+    source: &'a str,
     pos: usize,
 }
 
@@ -67,12 +67,12 @@ impl<'a> Tokenizer<'a> {
         let s = s.chars().next()?;
         #[rustfmt::skip]
         return Some(match s {
-            '('      => Token { typ: TokenType::LeftParen,    pos, len: 1 },
-            ')'      => Token { typ: TokenType::RightParen,   pos, len: 1 },
-            '-'      => Token { typ: TokenType::Minus,        pos, len: 1 },
-            '+'      => Token { typ: TokenType::Plus,         pos, len: 1 },
-            '*'      => Token { typ: TokenType::Star,         pos, len: 1 },
-            '/'      => Token { typ: TokenType::Slash,        pos, len: 1 },
+            '('      => Token { typ: TokenType::LeftParen,  pos, len: 1 },
+            ')'      => Token { typ: TokenType::RightParen, pos, len: 1 },
+            '-'      => Token { typ: TokenType::Minus,      pos, len: 1 },
+            '+'      => Token { typ: TokenType::Plus,       pos, len: 1 },
+            '*'      => Token { typ: TokenType::Star,       pos, len: 1 },
+            '/'      => Token { typ: TokenType::Slash,      pos, len: 1 },
             '0'..='9'=> self.parse_number(),
             // ['a'..='z' | 'A'..='Z',..]                                => self.parse_identifier(pos),
             _        => {

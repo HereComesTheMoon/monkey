@@ -1,5 +1,3 @@
-// use std::cmp::Ordering;
-// use crate::tokenizer;
 use crate::tokenizer::{Token, Tokenizer, TokenType};
 
 pub trait TokenStream {
@@ -8,17 +6,19 @@ pub trait TokenStream {
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
-    tokenizer: Tokenizer<'a>,
+    source: &'a str,
+    pub tokens: Vec<Token>, 
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
-        Lexer { tokenizer: Tokenizer::new(source) }
+        let tokens = infix_to_prefix(Tokenizer::new(source));
+        Lexer { source, tokens }
     }
 }
 
-pub fn infix_to_prefix(sc: Lexer) -> Vec<Token> {
-    let mut in_tokens: Vec<_> = sc.clone().tokenizer.into_iter().collect();
+pub fn infix_to_prefix(tokenizer: Tokenizer) -> Vec<Token> {
+    let mut in_tokens: Vec<_> = tokenizer.into_iter().collect();
     in_tokens.reverse();
 
     let mut tokens = vec![];
@@ -71,7 +71,7 @@ pub fn infix_to_prefix(sc: Lexer) -> Vec<Token> {
 
     tokens.reverse();
     println!("Final Tokens:");
-    print_tokens(&sc, &tokens);
+    // print_tokens(&sc, &tokens);
     tokens
 }
 
@@ -86,7 +86,7 @@ fn print_tokens(sc: &Lexer, v: &Vec<Token>) {
                 TokenType::Slash      => "/",
                 TokenType::Star       => "*",
                 TokenType::Number     => {
-                    &sc.tokenizer.source[token.pos..token.pos+token.len]
+                    &sc.source[token.pos..token.pos+token.len]
                 }
             }
         ).collect::<String>());
@@ -101,7 +101,7 @@ mod test {
     fn shunting_yard1() {
         let s = "1 + 2 * 3"; // + 1 * 2 3
         let sc = Lexer::new(s.into());
-        let res = infix_to_prefix(sc);
+        let res = sc.tokens;
         let desired = vec![
             Token {
                 typ: TokenType::Plus,
@@ -184,7 +184,7 @@ mod test {
                 len: 1,
             },
         ];
-        let res = infix_to_prefix(sc);
+        let res = sc.tokens;
         assert_eq!(res, desired);
     }
 
@@ -262,7 +262,7 @@ mod test {
             },
         ];
 
-        let res = infix_to_prefix(sc);
+        let res = sc.tokens;
         assert_eq!(res, desired);
     }
 
@@ -270,7 +270,7 @@ mod test {
     fn shunting_yard4() {
         let s = "1 - 1 - 1"; // - - 1 1 1
         let sc = Lexer::new(s.into());
-        let res = infix_to_prefix(sc);
+        let res = sc.tokens;
         let desired = vec![
             Token {
                 typ: TokenType::Minus,
