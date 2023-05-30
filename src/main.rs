@@ -1,11 +1,14 @@
 mod scanner;
+mod tokenizer;
 use std::env;
 
 use std::fs;
 use std::io;
 use std::io::{BufRead, Write};
 use std::process;
-use scanner::{Scanner, Token, TokenType, infix_to_prefix};
+use scanner::{Lexer, infix_to_prefix};
+use tokenizer::TokenType;
+use tokenizer::Token;
 
 fn main() {
     println!("Hello, world!");
@@ -54,9 +57,10 @@ struct Parser {
 
 impl Parser {
     pub fn new(source: String) -> Self {
+        let tokens = infix_to_prefix(Lexer::new(&source));
         Parser {
-            source: source.clone(),
-            tokens: infix_to_prefix(Scanner::new(source)),
+            source,
+            tokens,
             pos: 0,
         }
     }
