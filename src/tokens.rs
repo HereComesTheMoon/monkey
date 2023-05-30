@@ -49,3 +49,22 @@ impl Ord for TokenType {
     }
 }
 
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_tokens() {
+        use TokenType::*;
+        let chars = vec![
+            (LeftParen , "(".to_string()),
+            (RightParen, ")".to_string()),
+            (Minus     , "-".to_string()),
+            (Plus      , "+".to_string()),
+            (Slash     , "/".to_string()),
+            (Star      , "*".to_string()),
+            (Number    , "9".to_string()),
+        ];
+    }
+}

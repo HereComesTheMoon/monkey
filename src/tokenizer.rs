@@ -15,7 +15,7 @@ impl<'a> Tokenizer<'a> {
 }
 
 impl Tokenizer<'_> {
-    pub fn get_infix(mut self) -> Vec<Token> {
+    pub fn get_infix_tokens(mut self) -> Vec<Token> {
         let mut tokens = vec![];
 
         while let Some(token) = self.peek() {
@@ -28,8 +28,8 @@ impl Tokenizer<'_> {
         tokens
     }
 
-    pub fn infix_to_prefix(self) -> Vec<Token> {
-        let mut in_tokens = self.get_infix();
+    pub fn get_tokens(self) -> Vec<Token> {
+        let mut in_tokens = self.get_infix_tokens();
         in_tokens.reverse();
         let in_tokens = in_tokens;
 
@@ -86,7 +86,7 @@ impl Tokenizer<'_> {
 
         tokens.reverse();
         println!("Final Tokens:");
-        // print_tokens(&sc, &tokens);
+        self.print_tokens(&tokens);
         tokens
     }
 
@@ -172,10 +172,33 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_tokens() {
+        use TokenType::*;
+        let chars = vec![
+            (LeftParen , "(".to_string()),
+            (RightParen, ")".to_string()),
+            (Minus     , "-".to_string()),
+            (Plus      , "+".to_string()),
+            (Slash     , "/".to_string()),
+            (Star      , "*".to_string()),
+            (Number    , "9".to_string()),
+        ];
+
+        for (compare_token, s) in chars.into_iter() {
+            let tokenizer = Tokenizer::new(&s);
+            let mut tokens = tokenizer.get_infix_tokens();
+            assert_eq!(tokens.len(), 1);
+            let token = tokens.pop().unwrap();
+            assert_eq!(compare_token, token.typ);
+        }
+
+    }
+
+    #[test]
     fn shunting_yard1() {
         let source = "1 + 2 * 3".into(); // + 1 * 2 3
         let tokenizer = Tokenizer::new(source);
-        let res = tokenizer.infix_to_prefix();
+        let res = tokenizer.get_tokens();
         let desired = vec![
             Token {
                 typ: TokenType::Plus,
@@ -211,7 +234,7 @@ mod test {
     fn shunting_yard2() {
         let source = "(1 + 2 + 3 + 4)".into();
         let tokenizer = Tokenizer::new(source);
-        let res = tokenizer.infix_to_prefix();
+        let res = tokenizer.get_tokens();
         let desired = vec![
             Token {
                 typ: TokenType::LeftParen,
@@ -268,7 +291,7 @@ mod test {
         // + + 3 / * 4 2 ( - 1 5 ) 6
         let source = "3 + 4 * 2 / ( 1 - 5 ) + 6".into();
         let tokenizer = Tokenizer::new(source);
-        let res = tokenizer.infix_to_prefix();
+        let res = tokenizer.get_tokens();
         let desired = vec![
             Token {
                 typ: TokenType::Plus,
@@ -344,7 +367,7 @@ mod test {
     fn shunting_yard4() {
         let source = "1 - 1 - 1".into(); // - - 1 1 1
         let tokenizer = Tokenizer::new(source);
-        let res = tokenizer.infix_to_prefix();
+        let res = tokenizer.get_tokens();
         let desired = vec![
             Token {
                 typ: TokenType::Minus,
