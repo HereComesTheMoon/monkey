@@ -1,4 +1,4 @@
-use std::{fmt::Display, cmp::Ordering};
+use std::cmp::Ordering;
 
 #[derive(Clone)]
 pub struct Scanner {
@@ -10,7 +10,6 @@ impl Iterator for Scanner {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // let next_token = self.peek();
         if let Some(token) = self.peek() {
             self.pos += token.len;
             self.trim();
@@ -56,6 +55,7 @@ pub fn infix_to_prefix(sc: Scanner) -> Vec<Token> {
         while !stack.is_empty() {
             // TODO: Think about operator associativity
             // Right now everything is left associative, which is weird for exponentials
+            // Consider splitting precedence into left_prec and right_prec
             // let top = stack.last().unwrap().typ;
             // match TokenType::cmp(&token.typ, top) {
             //     Ordering::Less    => tokens.push(stack.pop().unwrap()),
@@ -159,27 +159,11 @@ impl Scanner {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token {
     pub typ: TokenType,
     pub pos: usize,
     pub len: usize,
-}
-
-impl Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(
-            match self.typ {
-                TokenType::LeftParen  => "(",
-                TokenType::RightParen => ")",
-                TokenType::Minus      => "-",
-                TokenType::Plus       => "+",
-                TokenType::Slash      => "/",
-                TokenType::Star       => "*",
-                TokenType::Number     => "N",
-            }
-        )
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -323,7 +307,6 @@ mod test {
 
     #[test]
     fn shunting_yard3() {
-        // + 3 + * 4 / 2 ( - 1 5 ) 6
         // + + 3 / * 4 2 ( - 1 5 ) 6
         let s = "3 + 4 * 2 / ( 1 - 5 ) + 6";
         let sc = Scanner::new(s.into());

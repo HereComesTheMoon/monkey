@@ -64,19 +64,6 @@ impl Parser {
     pub fn parse(&mut self) -> i64 {
         let exp = self.parse_expr();
         exp.unwrap().eval()
-        // for (k, token) in self.tokens.iter().enumerate() {
-        //     println!("Pos: {}, {:?}", k, token);
-        // }
-        // println!("Tokens: {:?}", self.tokens);
-        // while self.pos < self.tokens.len() {
-        //     let new_last = self.parse_expr();
-        //     assert!(new_last.is_some());
-        //     assert!(self.last.is_none());
-        //     self.last = new_last;
-        // }
-        // let res = self.parse_expr();
-        // println!("The result is: {}", res.eval())
-        // self.last.as_ref().unwrap().eval()
     }
 
     fn parse_expr(&mut self) -> Option<Expr> {
@@ -197,5 +184,10 @@ mod test {
     #[test]
     fn test_group_3() {
         tester("(1 - 1)", 0);
+    }
+
+    #[test]
+    fn test_group_4() {
+        tester("1 - (1 - 1)", 1);
     }
 }
