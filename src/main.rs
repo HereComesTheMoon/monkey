@@ -2,6 +2,7 @@ mod tokenizer;
 mod tokens;
 use std::env;
 
+use std::fmt::Display;
 use std::fs;
 use std::io;
 use std::io::{BufRead, Write};
@@ -47,6 +48,96 @@ fn run(source: String) -> i64 {
     let mut parser = Parser::new(source);
     parser.parse()
 }
+
+fn run_pratt(source: String) -> Expr {
+    let mut pratt = Pratt::new(source);
+    pratt.parse()
+}
+
+
+struct Pratt {
+    source: String,
+    tokens: Vec<Token>,
+    pos: usize,
+}
+
+impl Pratt {
+    pub fn new(source: String) -> Self {
+        let tokens = Tokenizer::new(&source).get_infix_tokens();
+        Pratt {
+            source,
+            tokens,
+            pos: 0,
+        }
+    }
+}
+
+impl Pratt {
+    pub fn parse(&mut self) -> Expr {
+        self.parse_bp(0)
+    }
+
+    fn parse_bp(&mut self, min_bp: u8) -> Expr {
+        println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
+        let mut lhs = match self.tokens[self.pos].typ {
+            TokenType::Number => self.parse_number(),
+            _ => panic!("Oh no???"),
+        };
+
+        self.pos += 1;
+
+        loop {
+            if self.tokens.len() <= self.pos {
+                break
+            }
+            println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
+            let op = match self.tokens[self.pos].typ {
+                TokenType::Minus => BinaryType::Minus,
+                TokenType::Plus  => BinaryType::Plus,
+                TokenType::Slash => BinaryType::Slash,
+                TokenType::Star  => BinaryType::Star,
+                // TokenType::LeftParen  => todo!(),
+                // TokenType::RightParen => todo!(),
+                // TokenType::Minus      => todo!(),
+                // TokenType::Plus       => todo!(),
+                // TokenType::Slash      => todo!(),
+                // TokenType::Star       => todo!(),
+                // TokenType::Number     => todo!(),
+                t                        => todo!("{t:?}"),
+            };
+
+            let (l_bp, r_bp) = op.binding_power();
+
+            if l_bp < min_bp {
+                break
+            }
+
+            self.pos += 1;
+
+            let rhs = self.parse_bp(r_bp);
+
+            lhs = Expr::Binary(BinaryExpr {
+                left: Box::new(lhs),
+                op,
+                right: Box::new(rhs),
+            });
+        }
+
+        lhs
+    }
+
+    fn parse_number(&mut self) -> Expr {
+        let t = &self.tokens[self.pos];
+        let int = self.source[t.pos..t.pos+t.len].parse();
+        if let Ok(int) = int {
+            Expr::Literal(int)
+        } else {
+            println!("Oh no!");
+            Expr::Error
+        }
+    }
+}
+
 
 struct Parser {
     source: String,
@@ -127,10 +218,34 @@ enum Expr {
     Error,
 }
 
+impl Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expr::Literal(c)  => write!(f, "{}", c),
+            Expr::Binary(bin) => write!(f, "({})", bin),
+            Expr::Grouping(_) => todo!(),
+            Expr::Error       => todo!(),
+        }
+    }
+}
+
 struct BinaryExpr {
     left: Box<Expr>,
     op: BinaryType,
     right: Box<Expr>,
+}
+
+impl Display for BinaryExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let op = match self.op {
+            BinaryType::Minus => '-',
+            BinaryType::Plus  => '+',
+            BinaryType::Slash => '/',
+            BinaryType::Star  => '*',
+        };
+
+        write!(f, "{} {} {}", op, self.left, self.right)
+    }
 }
 
 enum BinaryType {
@@ -138,6 +253,17 @@ enum BinaryType {
     Plus,
     Slash,
     Star,
+}
+
+impl BinaryType {
+    fn binding_power(&self) -> (u8, u8) {
+        match &self {
+            BinaryType::Minus => (1, 2),
+            BinaryType::Plus  => (1, 2),
+            BinaryType::Slash => (3, 4),
+            BinaryType::Star  => (3, 4),
+        }
+    }
 }
 
 
@@ -168,7 +294,7 @@ impl BinaryExpr {
 
 #[cfg(test)]
 mod test {
-    use super::run;
+    use super::*;
 
     fn tester(s: &str, expect: i64) {
         let res = run(s.to_string());
@@ -194,4 +320,28 @@ mod test {
     fn test_group_4() {
         tester("1 - (1 - 1)", 1);
     }
-}
+
+
+    fn test_pratt(s: &str, res: &str, val: i64) {
+        let s = run_pratt(s.into());
+        let output = s.eval();
+        assert_eq!(s.to_string(), res);
+        assert_eq!(val, output);
+    }
+
+    #[test]
+    fn pratt_tests() {
+        test_pratt("1", "1", 1);
+
+        test_pratt("1 + 2 * 3", "(+ 1 (* 2 3))", 7);
+
+        test_pratt("1 * 2 + 3", "(+ (* 1 2) 3)", 5);
+
+        test_pratt("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
+
+        test_pratt("1 - 1 - 1", "(- (- 1 1) 1)", -1);
+
+
+        // let s = run_pratt("a + b * c * d + e".into());
+        // assert_eq!(s.to_string(), "(+ (+ a (* (* b c) d)) e)");
+    }}

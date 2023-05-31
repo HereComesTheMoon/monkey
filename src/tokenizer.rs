@@ -25,6 +25,7 @@ impl Tokenizer<'_> {
         }
         
         assert!(self.source.len() <= self.pos);
+        self.print_tokens(&tokens);
         tokens
     }
 
