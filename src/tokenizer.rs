@@ -43,7 +43,11 @@ impl Tokenizer<'_> {
                         TokenType::Star => "*",
                         TokenType::Number => {
                             &self.source[token.pos..token.pos + token.len]
+                        },
+                        TokenType::Identifier => {
+                            &self.source[token.pos..token.pos + token.len]
                         }
+
                     })
                 .collect::<String>()
         );
@@ -67,23 +71,80 @@ impl Tokenizer<'_> {
     fn peek(&self) -> Option<Token> {
         let pos = self.pos;
         let s = self.source.get(pos..)?;
-        let s = s.chars().next()?;
+
+        if s.is_empty() {
+            return None;
+        }
+
+        let mut prefix = [' '; 7];
+        for (k, c) in s.chars().take(7).enumerate() {
+            prefix[k] = c;
+        }
+
         #[rustfmt::skip]
-        return Some(match s {
-            '('      => Token { typ: TokenType::LeftParen,  pos, len: 1 },
-            ')'      => Token { typ: TokenType::RightParen, pos, len: 1 },
-            '-'      => Token { typ: TokenType::Minus,      pos, len: 1 },
-            '+'      => Token { typ: TokenType::Plus,       pos, len: 1 },
-            '*'      => Token { typ: TokenType::Star,       pos, len: 1 },
-            '/'      => Token { typ: TokenType::Slash,      pos, len: 1 },
-            '0'..='9'=> self.parse_number(),
-            // ['a'..='z' | 'A'..='Z',..]                                => self.parse_identifier(pos),
-            _        => {
-                println!("Unexpected char: {:?} - {:#?}", s, s);
-                todo!();
-            }
+        return Some(match prefix {
+            ['(',..]                                                  => Token { typ: TokenType::LeftParen,    pos, len: 1 },
+            [')',..]                                                  => Token { typ: TokenType::RightParen,   pos, len: 1 },
+            // ['{',..]                                                  => Token { typ: TokenType::LeftBrace,    pos, len: 1 },
+            // ['}',..]                                                  => Token { typ: TokenType::RightBrace,   pos, len: 1 },
+            // [',',..]                                                  => Token { typ: TokenType::Comma,        pos, len: 1 },
+            // ['.',..]                                                  => Token { typ: TokenType::Dot,          pos, len: 1 },
+            ['-',..]                                                  => Token { typ: TokenType::Minus,        pos, len: 1 },
+            ['+',..]                                                  => Token { typ: TokenType::Plus,         pos, len: 1 },
+            // [';',..]                                                  => Token { typ: TokenType::Semicolon,    pos, len: 1 },
+            ['*',..]                                                  => Token { typ: TokenType::Star,         pos, len: 1 },
+            // ['>','=',..]                                              => Token { typ: TokenType::GreaterEqual, pos, len: 2 },
+            // ['>',..]                                                  => Token { typ: TokenType::Greater,      pos, len: 1 },
+            // ['<','=',..]                                              => Token { typ: TokenType::LessEqual,    pos, len: 2 },
+            // ['<',..]                                                  => Token { typ: TokenType::Less,         pos, len: 1 },
+            // ['!','=',..]                                              => Token { typ: TokenType::BangEqual,    pos, len: 2 },
+            // ['!',..]                                                  => Token { typ: TokenType::Bang,         pos, len: 1 },
+            // ['=','=',..]                                              => Token { typ: TokenType::EqualEqual,   pos, len: 2 },
+            // ['=',..]                                                  => Token { typ: TokenType::Equal,        pos, len: 1 },
+            ['/',..]                                                  => Token { typ: TokenType::Slash,        pos, len: 1 },
+            // ['a','n','d',..]             if prefix[3].is_whitespace() => Token { typ: TokenType::And,          pos, len: 3 },
+            // ['c','l','a','s','s',..]     if prefix[5].is_whitespace() => Token { typ: TokenType::Class,        pos, len: 5 },
+            // ['e','l','s','e',..]         if prefix[4].is_whitespace() => Token { typ: TokenType::Else,         pos, len: 4 },
+            // ['f','a','l','s','e',..]     if prefix[5].is_whitespace() => Token { typ: TokenType::False,        pos, len: 5 },
+            // ['f','u','n',..]             if prefix[3].is_whitespace() => Token { typ: TokenType::Fun,          pos, len: 3 },
+            // ['f','o','r',..]             if prefix[3].is_whitespace() => Token { typ: TokenType::For,          pos, len: 3 },
+            // ['i','f',..]                 if prefix[2].is_whitespace() => Token { typ: TokenType::If,           pos, len: 2 },
+            // ['n','i','l',..]             if prefix[3].is_whitespace() => Token { typ: TokenType::Nil,          pos, len: 3 },
+            // ['o','r',..]                 if prefix[2].is_whitespace() => Token { typ: TokenType::Or,           pos, len: 2 },
+            // ['p','r','i','n','t',..]     if prefix[5].is_whitespace() => Token { typ: TokenType::Print,        pos, len: 5 },
+            // ['r','e','t','u','r','n',..] if prefix[6].is_whitespace() => Token { typ: TokenType::Return,       pos, len: 6 },
+            // ['s','u','p','e','r',..]     if prefix[5].is_whitespace() => Token { typ: TokenType::Super,        pos, len: 5 },
+            // ['t','h','i','s',..]         if prefix[4].is_whitespace() => Token { typ: TokenType::This,         pos, len: 4 },
+            // ['t','r','u','e',..]         if prefix[4].is_whitespace() => Token { typ: TokenType::True,         pos, len: 4 },
+            // ['v','a','r',..]             if prefix[3].is_whitespace() => Token { typ: TokenType::Var,          pos, len: 3 },
+            // ['w','h','i','l','e',..]     if prefix[5].is_whitespace() => Token { typ: TokenType::While,        pos, len: 5 },
+            ['0'..='9',..]                                            => self.parse_number(),
+            // ['"',..]                                                  => self.parse_string(),
+            ['a'..='z' | 'A'..='Z',..]                                => self.parse_identifier(),
+            t                                                         => todo!("{t:?}"),
         });
     }
+
+    // fn peek(&self) -> Option<Token> {
+    //     let pos = self.pos;
+    //     let s = self.source.get(pos..)?;
+    //     let s = s.chars().next()?;
+    //     #[rustfmt::skip]
+    //     return Some(match s {
+    //         '('                        => Token { typ: TokenType::LeftParen,  pos, len: 1 },
+    //         ')'                        => Token { typ: TokenType::RightParen, pos, len: 1 },
+    //         '-'                        => Token { typ: TokenType::Minus,      pos, len: 1 },
+    //         '+'                        => Token { typ: TokenType::Plus,       pos, len: 1 },
+    //         '*'                        => Token { typ: TokenType::Star,       pos, len: 1 },
+    //         '/'                        => Token { typ: TokenType::Slash,      pos, len: 1 },
+    //         '0'..='9'                  => self.parse_number(),
+    //         ['a'..='z' | 'A'..='Z',..] => self.parse_identifier(pos),
+    //         _                          => {
+    //             println!("Unexpected char: {:?} - {:#?}", s, s);
+    //             todo!();
+    //         }
+    //     });
+    // }
 
     fn parse_number(&self) -> Token {
         let pos = self.pos;
@@ -102,6 +163,24 @@ impl Tokenizer<'_> {
             pos,
             len,
         }
+    }
+
+    fn parse_identifier(&self) -> Token {
+        let pos = self.pos;
+        let len = 1 + self.source
+        .get(pos..)
+        .unwrap()
+        .char_indices()
+        .take_while(|(_,c)| c.is_ascii_alphanumeric())
+        .last()
+        .map(|(i,_)| i)
+        .unwrap();
+        Token {
+            typ: TokenType::Identifier,
+            pos,
+            len,
+        }
+            
     }
 }
 

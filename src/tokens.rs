@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Token {
     pub typ: TokenType,
@@ -21,7 +19,7 @@ pub enum TokenType {
     Number,
 
     // Identifier
-    // Identifier,
+    Identifier,
     // EOF, // unnecessary token?
 }
 
