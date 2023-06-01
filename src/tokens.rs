@@ -1,26 +1,101 @@
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+use std::fmt::Display;
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token {
     pub typ: TokenType,
     pub pos: usize,
     pub len: usize,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,
     RightParen,
+    LeftBrace,
+    RightBrace,
+    Comma,
+    Dot,
     Minus,
     Plus,
-    Slash,
+    Semicolon,
     Star,
+    Slash,
+
+    // Comparators
+    GreaterEqual,
+    Greater,
+    LessEqual,
+    Less,
+    BangEqual,
+    Bang,
+    EqualEqual,
+    Equal,
+
+    // Keywords
+    And,
+    Else,
+    False,
+    Fun,
+    If,
+    Let,
+    Or,
+    Return,
+    True,
 
     // Number
-    Number,
+    Number(i64),
+
+    // String
+    String(String),
 
     // Identifier
-    Identifier,
+    Identifier(String),
+
+    // Error
+    Error,
     // EOF, // unnecessary token?
 }
 
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let TokenType::Number(num) = &self.typ {
+            return write!(f, "{}", num)
+        }
 
+        write!(f, "{}", match &self.typ {
+            TokenType::LeftParen     => "(",
+            TokenType::RightParen    => ")",
+            TokenType::LeftBrace     => "{",
+            TokenType::RightBrace    => "}",
+            TokenType::Comma         => ",",
+            TokenType::Dot           => ".",
+            TokenType::Minus         => "-",
+            TokenType::Plus          => "+",
+            TokenType::Semicolon     => ";",
+            TokenType::Star          => "*",
+            TokenType::Slash         => "/",
+            TokenType::GreaterEqual  => ">=",
+            TokenType::Greater       => ">",
+            TokenType::LessEqual     => "<=",
+            TokenType::Less          => "<",
+            TokenType::BangEqual     => "!=",
+            TokenType::Bang          => "!",
+            TokenType::EqualEqual    => "==",
+            TokenType::Equal         => "=",
+            TokenType::And           => "and",
+            TokenType::Else          => "else",
+            TokenType::False         => "false",
+            TokenType::Fun           => "fn",
+            TokenType::If            => "if",
+            TokenType::Let           => "let",
+            TokenType::Or            => "or",
+            TokenType::Return        => "return",
+            TokenType::True          => "true",
+            TokenType::String(s)     => s,
+            TokenType::Number(_)     => unreachable!(),
+            TokenType::Identifier(d) => d,
+            TokenType::Error         => "ERROR",
+        })
+    }
+}

@@ -55,7 +55,7 @@ struct Parser {
     pos: usize,
 }
 
-impl Parser {
+impl<'a> Parser {
     pub fn new(source: String) -> Self {
         let tokens = Tokenizer::new(&source).get_tokens();
         Parser {
@@ -74,7 +74,7 @@ impl Parser {
     fn parse_bp(&mut self, min_bp: u8) -> Expr {
         println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
         let mut lhs = match self.tokens[self.pos].typ {
-            TokenType::Number => self.parse_number(),
+            TokenType::Number(num) => Expr::Literal(num),
             _ => panic!("Oh no???"),
         };
 
@@ -85,7 +85,7 @@ impl Parser {
                 break
             }
             println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
-            let op = match self.tokens[self.pos].typ {
+            let op = match &self.tokens[self.pos].typ {
                 TokenType::Minus => BinaryType::Minus,
                 TokenType::Plus  => BinaryType::Plus,
                 TokenType::Slash => BinaryType::Slash,
@@ -219,9 +219,21 @@ mod test {
     use super::*;
 
     fn test_parser(s: &str, res: &str, val: i64) {
-        let s = run(s.into());
-        let output = s.eval();
-        assert_eq!(s.to_string(), res);
+        println!("TESTING: Parsing \"{}\"", s);
+        let mut parser = Parser::new(s.into());
+
+        print!("TOKENS: ");
+        for token in parser.tokens.iter() {
+            print!("{} ", token);
+        }
+        println!("");
+        println!("PARSING...");
+
+        let parsed = parser.parse();
+
+        println!("EVALUATING...");
+        let output = parsed.eval();
+        assert_eq!(parsed.to_string(), res);
         assert_eq!(val, output);
     }
 
@@ -243,7 +255,4 @@ mod test {
         test_parser("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
 
         test_parser("1 - 1 - 1", "(- (- 1 1) 1)", -1);
-
-        // let s = run_pratt("a + b * c * d + e".into());
-        // assert_eq!(s.to_string(), "(+ (+ a (* (* b c) d)) e)");
     }}
