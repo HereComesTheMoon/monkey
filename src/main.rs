@@ -55,7 +55,7 @@ struct Parser {
     pos: usize,
 }
 
-impl<'a> Parser {
+impl Parser {
     pub fn new(source: String) -> Self {
         let tokens = Tokenizer::new(&source).get_tokens();
         Parser {
@@ -74,7 +74,7 @@ impl Parser {
     fn parse_bp(&mut self, min_bp: u8) -> Expr {
         println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
         let mut lhs = match self.tokens[self.pos].typ {
-            TokenType::Number(num) => Expr::Literal(num),
+            TokenType::Number(num) => Expr::Literal(num), // Add Minus and unary expressions
             _ => panic!("Oh no???"),
         };
 
@@ -136,8 +136,31 @@ impl Parser {
 enum Expr {
     Literal(i64),
     Binary(BinaryExpr),
+    Unary(UnaryExpr),
     Grouping(Box<Expr>),
     Error,
+}
+
+struct BinaryExpr {
+    left: Box<Expr>,
+    op: BinaryType,
+    right: Box<Expr>,
+}
+
+enum BinaryType {
+    Minus,
+    Plus,
+    Slash,
+    Star,
+}
+
+struct UnaryExpr {
+    op: UnaryType,
+    val: Box<Expr>,
+}
+
+enum UnaryType {
+    Minus,
 }
 
 impl Display for Expr {
@@ -147,14 +170,9 @@ impl Display for Expr {
             Expr::Binary(bin) => write!(f, "({})", bin),
             Expr::Grouping(_) => todo!(),
             Expr::Error       => todo!(),
+            Expr::Unary(val)  => write!(f, "{}", val),
         }
     }
-}
-
-struct BinaryExpr {
-    left: Box<Expr>,
-    op: BinaryType,
-    right: Box<Expr>,
 }
 
 impl Display for BinaryExpr {
@@ -170,11 +188,14 @@ impl Display for BinaryExpr {
     }
 }
 
-enum BinaryType {
-    Minus,
-    Plus,
-    Slash,
-    Star,
+impl Display for UnaryExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let op = match self.op {
+            UnaryType::Minus => '-',
+        };
+
+        write!(f, "{}{}", op, self.val)
+    }
 }
 
 impl BinaryType {
@@ -196,6 +217,7 @@ impl Expr {
             Expr::Binary(b)    => b.eval(),
             Expr::Grouping(b)  => b.as_ref().eval(),
             Expr::Error        => todo!(),
+            Expr::Unary(val)   => val.eval(),
         }
     }
 }
@@ -209,6 +231,14 @@ impl BinaryExpr {
             BinaryType::Plus  => left + right,
             BinaryType::Slash => left / right,
             BinaryType::Star  => left * right,
+        }
+    }
+}
+
+impl UnaryExpr {
+    pub fn eval(&self) -> i64 {
+        match self.op {
+            UnaryType::Minus => - self.val.eval(),
         }
     }
 }
