@@ -43,28 +43,22 @@ fn run_prompt() {
     }
 }
 
-fn run(source: String) -> i64 {
+fn run(source: String) -> Expr {
     // let sc = Scanner::new(source);
     let mut parser = Parser::new(source);
     parser.parse()
 }
 
-fn run_pratt(source: String) -> Expr {
-    let mut pratt = Pratt::new(source);
-    pratt.parse()
-}
-
-
-struct Pratt {
+struct Parser {
     source: String,
     tokens: Vec<Token>,
     pos: usize,
 }
 
-impl Pratt {
+impl Parser {
     pub fn new(source: String) -> Self {
-        let tokens = Tokenizer::new(&source).get_infix_tokens();
-        Pratt {
+        let tokens = Tokenizer::new(&source).get_tokens();
+        Parser {
             source,
             tokens,
             pos: 0,
@@ -72,7 +66,7 @@ impl Pratt {
     }
 }
 
-impl Pratt {
+impl Parser {
     pub fn parse(&mut self) -> Expr {
         self.parse_bp(0)
     }
@@ -126,7 +120,7 @@ impl Pratt {
         lhs
     }
 
-    fn parse_number(&mut self) -> Expr {
+    fn parse_number(&self) -> Expr {
         let t = &self.tokens[self.pos];
         let int = self.source[t.pos..t.pos+t.len].parse();
         if let Ok(int) = int {
@@ -138,78 +132,6 @@ impl Pratt {
     }
 }
 
-
-struct Parser {
-    source: String,
-    tokens: Vec<Token>, // Prefix order
-    pos: usize,
-}
-
-impl Parser {
-    pub fn new(source: String) -> Self {
-        // let tokens = infix_to_prefix(Lexer::new(&source));
-        let tokens = Tokenizer::new(&source).get_tokens();
-        Parser {
-            source,
-            tokens,
-            pos: 0,
-        }
-    }
-
-    pub fn parse(&mut self) -> i64 {
-        let exp = self.parse_expr();
-        exp.unwrap().eval()
-    }
-
-    fn parse_expr(&mut self) -> Option<Expr> {
-        // println!("Token: {} — {:?}", self.pos, self.tokens[self.pos]);
-        Some(match self.tokens[self.pos].typ {
-            TokenType::LeftParen  => self.parse_group(),
-            TokenType::RightParen => unreachable!(),
-            TokenType::Minus      => self.parse_bin_expr(),
-            TokenType::Plus       => self.parse_bin_expr(),
-            TokenType::Slash      => self.parse_bin_expr(),
-            TokenType::Star       => self.parse_bin_expr(),
-            TokenType::Number     => self.parse_number(),
-        })
-    }
-
-    fn parse_bin_expr(&mut self) -> Expr {
-        let op = match self.tokens[self.pos].typ {
-            TokenType::Minus => BinaryType::Minus,
-            TokenType::Plus  => BinaryType::Plus,
-            TokenType::Slash => BinaryType::Slash,
-            TokenType::Star  => BinaryType::Star,
-            _                => unreachable!(),
-        };
-        self.pos += 1;
-        let left = Box::new(self.parse_expr().unwrap());
-        let right = Box::new(self.parse_expr().unwrap());
-        Expr::Binary(BinaryExpr { left , op , right })
-    }
-
-    fn parse_number(&mut self) -> Expr {
-        let t = &self.tokens[self.pos];
-        let int = self.source[t.pos..t.pos+t.len].parse();
-        self.pos += 1;
-        if let Ok(int) = int {
-            Expr::Literal(int)
-        } else {
-            println!("Oh no!");
-            Expr::Error
-        }
-    }
-
-    fn parse_group(&mut self) -> Expr {
-        assert!(matches!(self.tokens[self.pos].typ, TokenType::LeftParen));
-        self.pos += 1;
-        let inner = self.parse_expr();
-        println!("{:?}", self.tokens[self.pos]);
-        assert!(matches!(self.tokens[self.pos].typ, TokenType::RightParen));
-        self.pos += 1;
-        Expr::Grouping(Box::new(inner.unwrap()))
-    }
-}
 
 enum Expr {
     Literal(i64),
@@ -296,51 +218,31 @@ impl BinaryExpr {
 mod test {
     use super::*;
 
-    fn tester(s: &str, expect: i64) {
-        let res = run(s.to_string());
-        assert_eq!(res, expect);
-    }
-
-    #[test]
-    fn test_group_1() {
-        tester("1 - 1 - 1", -1);
-    }
-    
-    #[test]
-    fn test_group_2() {
-        tester("(1)", 1);
-    }
-    
-    #[test]
-    fn test_group_3() {
-        tester("(1 - 1)", 0);
-    }
-
-    #[test]
-    fn test_group_4() {
-        tester("1 - (1 - 1)", 1);
-    }
-
-
-    fn test_pratt(s: &str, res: &str, val: i64) {
-        let s = run_pratt(s.into());
+    fn test_parser(s: &str, res: &str, val: i64) {
+        let s = run(s.into());
         let output = s.eval();
         assert_eq!(s.to_string(), res);
         assert_eq!(val, output);
     }
 
     #[test]
-    fn pratt_tests() {
-        test_pratt("1", "1", 1);
+    fn grouping() {
+        test_parser("(1)"        , "(1)" , 1); 
+        test_parser("(1 - 1)"    , "((- 1 1))" , 0); 
+        test_parser("1 - (1 - 1)", "(- 1 ((- 1 1)))" , 1); 
+    }
 
-        test_pratt("1 + 2 * 3", "(+ 1 (* 2 3))", 7);
+    #[test]
+    fn binary_operator_precedence() {
+        test_parser("1", "1", 1);
 
-        test_pratt("1 * 2 + 3", "(+ (* 1 2) 3)", 5);
+        test_parser("1 + 2 * 3", "(+ 1 (* 2 3))", 7);
 
-        test_pratt("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
+        test_parser("1 * 2 + 3", "(+ (* 1 2) 3)", 5);
 
-        test_pratt("1 - 1 - 1", "(- (- 1 1) 1)", -1);
+        test_parser("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
 
+        test_parser("1 - 1 - 1", "(- (- 1 1) 1)", -1);
 
         // let s = run_pratt("a + b * c * d + e".into());
         // assert_eq!(s.to_string(), "(+ (+ a (* (* b c) d)) e)");
