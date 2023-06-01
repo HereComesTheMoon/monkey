@@ -128,7 +128,7 @@ impl<'a> Tokenizer<'a> {
         .map(|(i,_)| i)
         .unwrap();
         Token {
-            typ: TokenType::Identifier(s[pos..len].to_string()),
+            typ: TokenType::Identifier(s[..len].to_string()),
             pos,
             len,
         }

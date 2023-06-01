@@ -49,6 +49,45 @@ fn run(source: String) -> Expr {
     parser.parse()
 }
 
+#[derive(Debug)]
+struct Program {
+    statements: Vec<Statement>,
+}
+
+#[derive(Debug)]
+enum Statement {
+    Let(LetStatement),
+    Expr(ExprStatement),
+}
+
+#[derive(Debug)]
+struct LetStatement {
+    name: String,
+    val: Expr,
+}
+
+#[derive(Debug)]
+struct ExprStatement {
+    val: Expr,
+}
+
+impl Program {
+    pub fn new(mut parser: Parser) -> Result<Self, (String, Token)> {
+        let mut statements = vec![];
+        loop {
+            if parser.tokens.len() <= parser.pos { break }
+            let res = match parser.peek() {
+                TokenType::Let => parser.parse_let(),
+                _              => parser.parse_expr(),
+            }?;
+
+            statements.push(res);
+        }
+        Ok(Program { statements })
+    }
+}
+
+
 struct Parser {
     source: String,
     tokens: Vec<Token>,
@@ -64,6 +103,51 @@ impl Parser {
             pos: 0,
         }
     }
+
+    pub fn peek(&self) -> &TokenType {
+        &self.tokens[self.pos].typ
+    }
+
+    pub fn next(&mut self) -> &Token {
+        self.pos += 1;
+        &self.tokens[self.pos - 1]
+    }
+
+    pub fn parse_let(&mut self) -> Result<Statement, (String, Token)> {
+        assert_eq!(self.peek(), &TokenType::Let);
+        self.pos += 1;
+        let name = if let Token { typ: TokenType::Identifier(name), .. } = self.next() {
+            name.clone()
+        } else {
+            return Err(("Identifier".to_owned(), self.next().clone()))
+        };
+
+        if let TokenType::Equal = self.peek() {
+            self.next()
+        } else {
+            return Err(("=".to_owned(), self.next().clone()))
+        };
+
+        let val = self.parse();
+
+        let next = self.next();
+        if next.typ != TokenType::Semicolon {
+            return Err((";".to_owned(), next.clone()))
+        }
+
+        Ok(Statement::Let(LetStatement { name, val }))
+    }
+
+    pub fn parse_expr(&mut self) -> Result<Statement, (String, Token)> {
+        let val = self.parse();
+
+        let next = self.next();
+        if next.typ != TokenType::Semicolon {
+            return Err((";".to_owned(), next.clone()))
+        }
+
+        Ok(Statement::Expr(ExprStatement { val }))
+    }
 }
 
 impl Parser {
@@ -73,8 +157,10 @@ impl Parser {
 
     fn parse_bp(&mut self, min_bp: u8) -> Expr {
         println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
-        let mut lhs = match self.tokens[self.pos].typ {
-            TokenType::Number(num) => Expr::Literal(num), // Add Minus and unary expressions
+        let mut lhs = match self.peek() {
+            TokenType::Number(num) => Expr::Literal(*num), // Add Minus and unary expressions
+            TokenType::String(val) => Expr::String(val.clone()),
+            TokenType::Identifier(val) => Expr::Identifier(val.clone()),
             _ => panic!("Oh no???"),
         };
 
@@ -97,6 +183,7 @@ impl Parser {
                 // TokenType::Slash      => todo!(),
                 // TokenType::Star       => todo!(),
                 // TokenType::Number     => todo!(),
+                TokenType::Semicolon => break,
                 t                        => todo!("{t:?}"),
             };
 
@@ -133,20 +220,25 @@ impl Parser {
 }
 
 
+#[derive(Debug)]
 enum Expr {
     Literal(i64),
+    String(String),
+    Identifier(String),
     Binary(BinaryExpr),
     Unary(UnaryExpr),
     Grouping(Box<Expr>),
     Error,
 }
 
+#[derive(Debug)]
 struct BinaryExpr {
     left: Box<Expr>,
     op: BinaryType,
     right: Box<Expr>,
 }
 
+#[derive(Debug)]
 enum BinaryType {
     Minus,
     Plus,
@@ -154,11 +246,13 @@ enum BinaryType {
     Star,
 }
 
+#[derive(Debug)]
 struct UnaryExpr {
     op: UnaryType,
     val: Box<Expr>,
 }
 
+#[derive(Debug)]
 enum UnaryType {
     Minus,
 }
@@ -171,6 +265,8 @@ impl Display for Expr {
             Expr::Grouping(_) => todo!(),
             Expr::Error       => todo!(),
             Expr::Unary(val)  => write!(f, "{}", val),
+            Expr::String(val) => write!(f, "{}", val),
+            Expr::Identifier(val) => write!(f, "{}", val),
         }
     }
 }
@@ -218,6 +314,8 @@ impl Expr {
             Expr::Grouping(b)  => b.as_ref().eval(),
             Expr::Error        => todo!(),
             Expr::Unary(val)   => val.eval(),
+            Expr::String(_) => todo!(),
+            Expr::Identifier(_) => todo!(),
         }
     }
 }
@@ -285,4 +383,15 @@ mod test {
         test_parser("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
 
         test_parser("1 - 1 - 1", "(- (- 1 1) 1)", -1);
-    }}
+    }
+
+    #[test]
+    fn program_test() {
+        let source = "let sneed = \"Seed and Feed\";\nlet abc = 1 + 2;".into();
+        let parser = Parser::new(source);
+        let program = Program::new(parser);
+        println!("{:?}", program);
+    }
+}
+
+
