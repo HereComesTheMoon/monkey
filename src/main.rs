@@ -78,7 +78,7 @@ impl Program {
             if parser.tokens.len() <= parser.pos { break }
             let res = match parser.peek() {
                 TokenType::Let => parser.parse_let(),
-                _              => parser.parse_expr(),
+                _              => parser.parse_expr_statement(),
             }?;
 
             statements.push(res);
@@ -138,7 +138,7 @@ impl Parser {
         Ok(Statement::Let(LetStatement { name, val }))
     }
 
-    pub fn parse_expr(&mut self) -> Result<Statement, (String, Token)> {
+    pub fn parse_expr_statement(&mut self) -> Result<Statement, (String, Token)> {
         let val = self.parse();
 
         let next = self.next();
@@ -158,10 +158,15 @@ impl Parser {
     fn parse_bp(&mut self, min_bp: u8) -> Expr {
         println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
         let mut lhs = match self.peek() {
-            TokenType::Number(num) => Expr::Literal(*num), // Add Minus and unary expressions
-            TokenType::String(val) => Expr::String(val.clone()),
+            TokenType::Number(num)     => Expr::Integer(*num), // Add Minus and unary expressions
+            TokenType::False           => Expr::Bool(false),
+            TokenType::True            => Expr::Bool(true),
+            TokenType::String(val)     => Expr::String(val.clone()),
             TokenType::Identifier(val) => Expr::Identifier(val.clone()),
-            _ => panic!("Oh no???"),
+            TokenType::Minus           => Expr::Unary(self.parse_unary()),
+            TokenType::Bang            => Expr::Unary(self.parse_unary()),
+            TokenType::LeftParen       => Expr::Grouping(self.parse_grouping()),
+            _                          => panic!("Oh no???"),
         };
 
         self.pos += 1;
@@ -171,20 +176,23 @@ impl Parser {
                 break
             }
             println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
-            let op = match &self.tokens[self.pos].typ {
-                TokenType::Minus => BinaryType::Minus,
-                TokenType::Plus  => BinaryType::Plus,
-                TokenType::Slash => BinaryType::Slash,
-                TokenType::Star  => BinaryType::Star,
-                // TokenType::LeftParen  => todo!(),
-                // TokenType::RightParen => todo!(),
-                // TokenType::Minus      => todo!(),
-                // TokenType::Plus       => todo!(),
-                // TokenType::Slash      => todo!(),
-                // TokenType::Star       => todo!(),
-                // TokenType::Number     => todo!(),
-                TokenType::Semicolon => break,
-                t                        => todo!("{t:?}"),
+            let op = match self.peek() {
+                TokenType::Minus        => BinaryType::Minus,
+                TokenType::Plus         => BinaryType::Plus,
+                TokenType::Slash        => BinaryType::Slash,
+                TokenType::Star         => BinaryType::Star,
+                TokenType::LeftParen    => todo!(),
+                TokenType::RightParen   => break,
+                TokenType::Semicolon    => break,
+                TokenType::GreaterEqual => BinaryType::GreaterEqual,
+                TokenType::Greater      => BinaryType::Greater,
+                TokenType::LessEqual    => BinaryType::LessEqual,
+                TokenType::Less         => BinaryType::Less,
+                TokenType::BangEqual    => BinaryType::BangEqual,
+                TokenType::EqualEqual   => BinaryType::EqualEqual,
+                TokenType::And          => BinaryType::And,
+                TokenType::Or           => BinaryType::Or,
+                t                       => todo!("{t:?}"),
             };
 
             let (l_bp, r_bp) = op.binding_power();
@@ -207,22 +215,47 @@ impl Parser {
         lhs
     }
 
-    fn parse_number(&self) -> Expr {
-        let t = &self.tokens[self.pos];
-        let int = self.source[t.pos..t.pos+t.len].parse();
-        if let Ok(int) = int {
-            Expr::Literal(int)
-        } else {
-            println!("Oh no!");
-            Expr::Error
-        }
+    fn parse_grouping(&mut self) -> Box<Expr> {
+        assert_eq!(self.peek(), &TokenType::LeftParen);
+        self.pos += 1;
+        let res = Box::new(self.parse_bp(0));
+        assert_eq!(self.peek(), &TokenType::RightParen);
+        self.pos += 1;
+        res
     }
+
+    fn parse_unary(&mut self) -> UnaryExpr {
+        let op = match self.next().typ {
+            TokenType::Minus => UnaryType::Minus,
+            TokenType::Bang => UnaryType::Bang,
+            _ => todo!(),
+        };
+
+        let (_, r_bp) = op.binding_power();
+
+        let val = Box::new(self.parse_bp(r_bp));
+        self.pos -= 1;
+
+        UnaryExpr { op, val }
+    }
+
+    // fn parse_number(&self) -> Expr {
+    //     let t = &self.tokens[self.pos];
+    //     let int = self.source[t.pos..t.pos+t.len].parse();
+    //     if let Ok(int) = int {
+    //         Expr::Literal(int)
+    //     } else {
+    //         println!("Oh no!");
+    //         Expr::Error
+    //     }
+    // }
 }
 
 
 #[derive(Debug)]
 enum Expr {
-    Literal(i64),
+    Integer(i64),
+    Bool(bool),
     String(String),
     Identifier(String),
     Binary(BinaryExpr),
@@ -244,6 +277,14 @@ enum BinaryType {
     Plus,
     Slash,
     Star,
+    GreaterEqual,
+    Greater,
+    LessEqual,
+    Less,
+    BangEqual,
+    EqualEqual,
+    And,
+    Or,
 }
 
 #[derive(Debug)]
@@ -255,14 +296,16 @@ struct UnaryExpr {
 #[derive(Debug)]
 enum UnaryType {
     Minus,
+    Bang,
 }
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Literal(c)  => write!(f, "{}", c),
+            Expr::Integer(c)  => write!(f, "{}", c),
+            Expr::Bool(val)   => write!(f, "{}", val),
             Expr::Binary(bin) => write!(f, "({})", bin),
-            Expr::Grouping(_) => todo!(),
+            Expr::Grouping(val) => write!(f, "({})", val),
             Expr::Error       => todo!(),
             Expr::Unary(val)  => write!(f, "{}", val),
             Expr::String(val) => write!(f, "{}", val),
@@ -274,10 +317,18 @@ impl Display for Expr {
 impl Display for BinaryExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let op = match self.op {
-            BinaryType::Minus => '-',
-            BinaryType::Plus  => '+',
-            BinaryType::Slash => '/',
-            BinaryType::Star  => '*',
+            BinaryType::Minus        => "-",
+            BinaryType::Plus         => "+",
+            BinaryType::Slash        => "/",
+            BinaryType::Star         => "*",
+            BinaryType::GreaterEqual => ">=",
+            BinaryType::Greater      => ">",
+            BinaryType::LessEqual    => "<=",
+            BinaryType::Less         => "<",
+            BinaryType::BangEqual    => "!=",
+            BinaryType::EqualEqual   => "==",
+            BinaryType::And          => "and",
+            BinaryType::Or           => "or",
         };
 
         write!(f, "{} {} {}", op, self.left, self.right)
@@ -288,6 +339,7 @@ impl Display for UnaryExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let op = match self.op {
             UnaryType::Minus => '-',
+            UnaryType::Bang => '!',
         };
 
         write!(f, "{}{}", op, self.val)
@@ -297,10 +349,27 @@ impl Display for UnaryExpr {
 impl BinaryType {
     fn binding_power(&self) -> (u8, u8) {
         match &self {
-            BinaryType::Minus => (1, 2),
-            BinaryType::Plus  => (1, 2),
-            BinaryType::Slash => (3, 4),
-            BinaryType::Star  => (3, 4),
+            BinaryType::Minus        => (7, 8),
+            BinaryType::Plus         => (7, 8),
+            BinaryType::Slash        => (9, 10),
+            BinaryType::Star         => (9, 10),
+            BinaryType::GreaterEqual => (5, 6),
+            BinaryType::Greater      => (5, 6),
+            BinaryType::LessEqual    => (5, 6),
+            BinaryType::Less         => (5, 6),
+            BinaryType::BangEqual    => (3, 4),
+            BinaryType::EqualEqual   => (3, 4),
+            BinaryType::And          => (1, 2),
+            BinaryType::Or           => (1, 2),
+        }
+    }
+}
+
+impl UnaryType {
+    fn binding_power(&self) -> ((), u8) {
+        match &self {
+            UnaryType::Minus => ((), 11),
+            UnaryType::Bang => ((), 11),
         }
     }
 }
@@ -309,13 +378,14 @@ impl BinaryType {
 impl Expr {
     pub fn eval(&self) -> i64 {
         match self {
-            Expr::Literal(num) => *num,
+            Expr::Integer(num) => *num,
             Expr::Binary(b)    => b.eval(),
             Expr::Grouping(b)  => b.as_ref().eval(),
             Expr::Error        => todo!(),
             Expr::Unary(val)   => val.eval(),
             Expr::String(_) => todo!(),
             Expr::Identifier(_) => todo!(),
+            Expr::Bool(val)    => *val as i64,
         }
     }
 }
@@ -325,10 +395,18 @@ impl BinaryExpr {
         let left = self.left.eval();
         let right = self.right.eval();
         match self.op {
-            BinaryType::Minus => left - right,
-            BinaryType::Plus  => left + right,
-            BinaryType::Slash => left / right,
-            BinaryType::Star  => left * right,
+            BinaryType::Minus        => left - right,
+            BinaryType::Plus         => left + right,
+            BinaryType::Slash        => left / right,
+            BinaryType::Star         => left * right,
+            BinaryType::GreaterEqual => (left >= right).into(),
+            BinaryType::Greater      => (left > right).into(),
+            BinaryType::LessEqual    => (left <= right).into(),
+            BinaryType::Less         => (left < right).into(),
+            BinaryType::BangEqual    => (left != right).into(),
+            BinaryType::EqualEqual   => (left == right).into(),
+            BinaryType::And          => (left != 0 && right != 0).into(),
+            BinaryType::Or           => (left != 0 || right != 0).into(),
         }
     }
 }
@@ -337,6 +415,7 @@ impl UnaryExpr {
     pub fn eval(&self) -> i64 {
         match self.op {
             UnaryType::Minus => - self.val.eval(),
+            UnaryType::Bang => !self.val.eval(),
         }
     }
 }
@@ -346,7 +425,8 @@ impl UnaryExpr {
 mod test {
     use super::*;
 
-    fn test_parser(s: &str, res: &str, val: i64) {
+
+    fn test_eval(s: &str, res: &str, val: i64) {
         println!("TESTING: Parsing \"{}\"", s);
         let mut parser = Parser::new(s.into());
 
@@ -365,24 +445,42 @@ mod test {
         assert_eq!(val, output);
     }
 
+    fn test_parser(s: &str, res: &str) {
+        println!("TESTING: Parsing \"{}\"", s);
+        let mut parser = Parser::new(s.into());
+
+        print!("TOKENS: ");
+        for token in parser.tokens.iter() {
+            print!("{} ", token);
+        }
+        println!("");
+        println!("PARSING...");
+
+        let parsed = parser.parse();
+
+        println!("EVALUATING...");
+        assert_eq!(parsed.to_string(), res);
+    }
+
     #[test]
     fn grouping() {
-        test_parser("(1)"        , "(1)" , 1); 
-        test_parser("(1 - 1)"    , "((- 1 1))" , 0); 
-        test_parser("1 - (1 - 1)", "(- 1 ((- 1 1)))" , 1); 
+        test_eval("(1)"        , "(1)" , 1); 
+        test_eval("(1 - 1)"    , "((- 1 1))" , 0); 
+        test_eval("1 - (1 - 1)", "(- 1 ((- 1 1)))" , 1); 
+        test_eval("((1))", "((1))" , 1); 
     }
 
     #[test]
     fn binary_operator_precedence() {
-        test_parser("1", "1", 1);
+        test_eval("1", "1", 1);
 
-        test_parser("1 + 2 * 3", "(+ 1 (* 2 3))", 7);
+        test_eval("1 + 2 * 3", "(+ 1 (* 2 3))", 7);
 
-        test_parser("1 * 2 + 3", "(+ (* 1 2) 3)", 5);
+        test_eval("1 * 2 + 3", "(+ (* 1 2) 3)", 5);
 
-        test_parser("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
+        test_eval("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
 
-        test_parser("1 - 1 - 1", "(- (- 1 1) 1)", -1);
+        test_eval("1 - 1 - 1", "(- (- 1 1) 1)", -1);
     }
 
     #[test]
@@ -391,6 +489,35 @@ mod test {
         let parser = Parser::new(source);
         let program = Program::new(parser);
         println!("{:?}", program);
+    }
+
+    #[test]
+    fn unary() {
+        test_eval("-1", "-1", -1);
+        test_eval("-----1", "-----1", -1);
+        test_eval("----1", "----1", 1);
+        test_eval("1 + -1", "(+ 1 -1)", 0);
+        test_eval("- 1 + - 2", "(+ -1 -2)", -3);
+        // test_parser("- 1 - - 2", "(- -1 -2)", 1);
+    }
+
+    #[test]
+    fn bool() {
+        test_eval("true", "true", 1);
+        test_eval("false", "false", 0);
+        test_parser("!true", "!true");
+        test_parser("!!!true", "!!!true");
+        test_parser("!!!!true", "!!!!true");
+        test_parser("true and true", "(and true true)");
+        test_parser("true or false", "(or true false)");
+        test_parser("true or false == true", "(or true (== false true))");
+        test_parser("3 < 5 == true", "(== (< 3 5) true)");
+        test_parser("3 <= 5 == true", "(== (<= 3 5) true)");
+        test_parser("3 > 5 == false", "(== (> 3 5) false)");
+        test_parser("3 >= 5 == true", "(== (>= 3 5) true)");
+        test_parser("3 != 5 == true", "(== (!= 3 5) true)");
+        test_parser("!false == true", "(== !false true)");
+        test_parser("3 < 5 and 4 == 4 == true", "(and (< 3 5) (== (== 4 4) true))");
     }
 }
 
