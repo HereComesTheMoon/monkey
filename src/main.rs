@@ -158,7 +158,7 @@ impl Parser {
     fn parse_bp(&mut self, min_bp: u8) -> Expr {
         println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
         let mut lhs = match self.peek() {
-            TokenType::Number(num)     => Expr::Integer(*num), // Add Minus and unary expressions
+            TokenType::Number(num)     => Expr::Integer(*num),
             TokenType::False           => Expr::Bool(false),
             TokenType::True            => Expr::Bool(true),
             TokenType::String(val)     => Expr::String(val.clone()),
@@ -181,7 +181,6 @@ impl Parser {
                 TokenType::Plus         => BinaryType::Plus,
                 TokenType::Slash        => BinaryType::Slash,
                 TokenType::Star         => BinaryType::Star,
-                TokenType::LeftParen    => todo!(),
                 TokenType::RightParen   => break,
                 TokenType::Semicolon    => break,
                 TokenType::GreaterEqual => BinaryType::GreaterEqual,
@@ -220,7 +219,6 @@ impl Parser {
         self.pos += 1;
         let res = Box::new(self.parse_bp(0));
         assert_eq!(self.peek(), &TokenType::RightParen);
-        self.pos += 1;
         res
     }
 
@@ -238,17 +236,6 @@ impl Parser {
 
         UnaryExpr { op, val }
     }
-
-    // fn parse_number(&self) -> Expr {
-    //     let t = &self.tokens[self.pos];
-    //     let int = self.source[t.pos..t.pos+t.len].parse();
-    //     if let Ok(int) = int {
-    //         Expr::Literal(int)
-    //     } else {
-    //         println!("Oh no!");
-    //         Expr::Error
-    //     }
-    // }
 }
 
 
@@ -302,13 +289,13 @@ enum UnaryType {
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Integer(c)  => write!(f, "{}", c),
-            Expr::Bool(val)   => write!(f, "{}", val),
-            Expr::Binary(bin) => write!(f, "({})", bin),
-            Expr::Grouping(val) => write!(f, "({})", val),
-            Expr::Error       => todo!(),
-            Expr::Unary(val)  => write!(f, "{}", val),
-            Expr::String(val) => write!(f, "{}", val),
+            Expr::Integer(val)    => write!(f, "{}", val),
+            Expr::Bool(val)       => write!(f, "{}", val),
+            Expr::Binary(val)     => write!(f, "({})", val),
+            Expr::Grouping(val)   => write!(f, "({})", val),
+            Expr::Error           => todo!(),
+            Expr::Unary(val)      => write!(f, "{}", val),
+            Expr::String(val)     => write!(f, "{}", val),
             Expr::Identifier(val) => write!(f, "{}", val),
         }
     }
@@ -339,7 +326,7 @@ impl Display for UnaryExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let op = match self.op {
             UnaryType::Minus => '-',
-            UnaryType::Bang => '!',
+            UnaryType::Bang  => '!',
         };
 
         write!(f, "{}{}", op, self.val)
@@ -441,8 +428,8 @@ mod test {
 
         println!("EVALUATING...");
         let output = parsed.eval();
-        assert_eq!(parsed.to_string(), res);
         assert_eq!(val, output);
+        assert_eq!(parsed.to_string(), res);
     }
 
     fn test_parser(s: &str, res: &str) {
@@ -471,15 +458,19 @@ mod test {
     }
 
     #[test]
+    fn grouping2() {
+        test_eval("1 - (1) - 1"        , "(- (- 1 (1)) 1)" , -1); 
+        test_eval("1 - (1 - (1))"        , "(- 1 ((- 1 (1))))" , 1); 
+        test_eval("((1) - 1)"        , "((- (1) 1))" , 0); 
+        test_eval("1 - ((1) - 1)"        , "(- 1 ((- (1) 1)))" , 1); 
+    }
+
+    #[test]
     fn binary_operator_precedence() {
         test_eval("1", "1", 1);
-
         test_eval("1 + 2 * 3", "(+ 1 (* 2 3))", 7);
-
         test_eval("1 * 2 + 3", "(+ (* 1 2) 3)", 5);
-
         test_eval("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
-
         test_eval("1 - 1 - 1", "(- (- 1 1) 1)", -1);
     }
 
@@ -498,7 +489,6 @@ mod test {
         test_eval("----1", "----1", 1);
         test_eval("1 + -1", "(+ 1 -1)", 0);
         test_eval("- 1 + - 2", "(+ -1 -2)", -3);
-        // test_parser("- 1 - - 2", "(- -1 -2)", 1);
     }
 
     #[test]
