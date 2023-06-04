@@ -118,7 +118,7 @@ impl Parser {
 
         self.tokenizer.assert_next(TokenType::Equal)?;
 
-        let val = self.parse();
+        let val = self.parse().is_err()?;
 
         self.tokenizer.assert_next(TokenType::Semicolon)?;
 
@@ -126,7 +126,8 @@ impl Parser {
     }
 
     pub fn parse_expr_statement(&mut self) -> Result<Statement, ExpectedError> {
-        let val = self.parse();
+        // let val = self.parse().is_err()?;
+        let val = self.parse().is_err()?;
 
         self.tokenizer.assert_next(TokenType::Semicolon)?;
 
@@ -224,14 +225,16 @@ impl Parser {
 
 #[derive(Debug)]
 enum Expr {
-    Integer(i64),
-    Bool(bool),
-    String(String),
-    Identifier(String),
     Binary(BinaryExpr),
-    Unary(UnaryExpr),
-    Grouping(Box<Expr>),
+    Block(BlockExpr),
+    Bool(bool),
     Error(ExpectedError),
+    Grouping(Box<Expr>),
+    Identifier(String),
+    If(IfExpr),
+    Integer(i64),
+    String(String),
+    Unary(UnaryExpr),
 }
 
 #[derive(Debug)]
@@ -258,6 +261,18 @@ enum BinaryType {
 }
 
 #[derive(Debug)]
+struct BlockExpr {
+    statements: Vec<Statement>,
+}
+
+#[derive(Debug)]
+struct IfExpr {
+    cond: Box<Expr>,
+    cons: BlockExpr,
+    alt: Option<BlockExpr>,
+}
+
+#[derive(Debug)]
 struct UnaryExpr {
     op: UnaryType,
     val: Box<Expr>,
@@ -268,6 +283,39 @@ enum UnaryType {
     Minus,
     Bang,
 }
+
+impl Expr {
+    pub fn is_err(self) -> Result<Expr, ExpectedError> {
+        match self {
+            Expr::Error(err) => Err(err),
+            _ => Ok(self),
+        }
+    }
+}
+
+impl Display for Statement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Statement::Let(val)  => write!(f, "{}", val),
+            Statement::Expr(val) => write!(f, "{}", val),
+        }
+    }
+}
+
+
+impl Display for LetStatement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "let {} = {};", self.name, self.val)
+    }
+}
+
+
+impl Display for ExprStatement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{};", self.val)
+    }
+}
+
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -280,6 +328,29 @@ impl Display for Expr {
             Expr::Unary(val)      => write!(f, "{}", val),
             Expr::String(val)     => write!(f, "{}", val),
             Expr::Identifier(val) => write!(f, "{}", val),
+            Expr::Block(val)      => write!(f, "{}", val),
+            Expr::If(val)         => write!(f, "{}", val),
+        }
+    }
+}
+
+impl Display for BlockExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+        s.extend(
+            self.statements.iter().map(|stmt| format!("\t{}", stmt))
+        );
+
+        write!(f, "{{\n{}}}", s)
+    }
+}
+
+impl Display for IfExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.alt.is_some() {
+            write!(f, "if ({}) {{\n{}}} else {{\n{}}}\n", self.cond, self.cons, *self.alt.as_ref().unwrap())
+        } else {
+            write!(f, "if ({}) {{\n{}}}", self.cond, self.cons)
         }
     }
 }
@@ -344,18 +415,19 @@ impl UnaryType {
     }
 }
 
-
 impl Expr {
     pub fn eval(&self) -> i64 {
         match self {
-            Expr::Integer(num) => *num,
-            Expr::Binary(b)    => b.eval(),
-            Expr::Grouping(b)  => b.as_ref().eval(),
-            Expr::Error(err)   => panic!(),
-            Expr::Unary(val)   => val.eval(),
-            Expr::String(_) => todo!(),
+            Expr::Integer(num)  => *num,
+            Expr::Binary(b)     => b.eval(),
+            Expr::Grouping(b)   => b.as_ref().eval(),
+            Expr::Error(err)    => panic!(),
+            Expr::Unary(val)    => val.eval(),
+            Expr::String(_)     => todo!(),
             Expr::Identifier(_) => todo!(),
-            Expr::Bool(val)    => *val as i64,
+            Expr::Bool(val)     => *val as i64,
+            Expr::Block(_)      => todo!(),
+            Expr::If(_)         => todo!(),
         }
     }
 }
@@ -541,10 +613,17 @@ mod test {
         test_program_error("\"\\");
     }
 
-    // #[test]
-    // fn bad_input() {
-    //     parse_expr_to_s_expr("(", "(");
-    // }
+    #[test]
+    fn if_test() {
+        test_program("if (3 < 5) {\n\tlet a = 7;\n} else {\n\t1+2;\n};");
+        test_program("if (3 < 5) {\n\tlet a = 7;\n};");
+    }
+
+    #[test]
+    fn block_test() {
+        test_program("{\na + b;\nlet banana = \"foo\";\n};");
+        test_program("{};");
+    }
 }
 
 
