@@ -89,16 +89,14 @@ impl Program {
 
 
 struct Parser {
-    source: String,
     tokens: Vec<Token>,
     pos: usize,
 }
 
 impl Parser {
     pub fn new(source: String) -> Self {
-        let tokens = Tokenizer::new(&source).get_tokens();
+        let tokens = Tokenizer::new(source).collect();
         Parser {
-            source,
             tokens,
             pos: 0,
         }

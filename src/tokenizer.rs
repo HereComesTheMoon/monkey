@@ -1,33 +1,35 @@
 use crate::tokens::{Token, TokenType};
 
-#[derive(Clone, Copy)]
-pub struct Tokenizer<'a> {
-    source: &'a str,
+#[derive(Clone)]
+pub struct Tokenizer {
+    source: String,
     pos: usize,
 }
 
-impl<'a> Tokenizer<'a> {
-    pub fn new(source: &'a str) -> Self {
+impl Tokenizer {
+    pub fn new(source: String) -> Self {
         let mut sc = Tokenizer { source, pos: 0 };
         sc.trim();
         sc
     }
 }
 
-impl<'a> Tokenizer<'a> {
-    pub fn get_tokens(mut self) -> Vec<Token> {
-        let mut tokens = vec![];
+impl Iterator for Tokenizer {
+    type Item = Token;
 
+    fn next(&mut self) -> Option<Self::Item> {
         while let Some(token) = self.peek() {
             self.pos += token.len;
             self.trim();
-            tokens.push(token);
+            return Some(token);
         }
         
         assert!(self.source.len() <= self.pos);
-        tokens
+        None
     }
+}
 
+impl Tokenizer {
     fn trim(&mut self) {
         let s = self.source.get(self.pos..);
         if s.is_none() {
@@ -45,7 +47,7 @@ impl<'a> Tokenizer<'a> {
 
     fn peek(&self) -> Option<Token> {
         let pos = self.pos;
-        let s = self.source.get(pos..)?;
+        let s = &self.source[pos..];
 
         if s.is_empty() {
             return None;
@@ -185,8 +187,8 @@ mod test {
         ];
 
         for (compare_token, s) in chars.into_iter() {
-            let tokenizer = Tokenizer::new(&s);
-            let mut tokens = tokenizer.get_tokens();
+            let tokenizer = Tokenizer::new(s);
+            let mut tokens: Vec<_> = tokenizer.collect();
             assert_eq!(tokens.len(), 1);
             let token = tokens.pop().unwrap();
             assert_eq!(compare_token, token.typ);
