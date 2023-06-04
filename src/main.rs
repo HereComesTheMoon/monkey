@@ -110,9 +110,10 @@ impl Parser {
         self.tokenizer.assert_next(TokenType::Let)?;
 
         let name = if let Token { typ: TokenType::Identifier(name), .. } = self.tokenizer.peek() {
+            self.tokenizer.next();
             name.clone()
         } else {
-            return Err(ExpectedError(("Identifier".to_owned(), self.tokenizer.next().unwrap().clone())))
+            return Err(ExpectedError(("Identifier".to_owned(), self.tokenizer.next().clone())))
         };
 
         self.tokenizer.assert_next(TokenType::Equal)?;
@@ -139,7 +140,7 @@ impl Parser {
     }
 
     fn parse_bp(&mut self, min_bp: u8) -> Expr {
-        let token = self.tokenizer.next().expect("Parsing after EoF!");
+        let token = self.tokenizer.next();
         println!("{:?}", token);
         let mut lhs = match token.typ {
             TokenType::Number(num)     => Expr::Integer(num),
@@ -150,13 +151,15 @@ impl Parser {
             TokenType::Minus           => Expr::Unary(self.parse_unary(token.typ)),
             TokenType::Bang            => Expr::Unary(self.parse_unary(token.typ)),
             TokenType::LeftParen       => Expr::Grouping(self.parse_grouping()),
-            _                          => panic!("Oh no???"),
+            TokenType::EoF             => return Expr::Error(ExpectedError(("Some token.".into(), token))),
+            TokenType::Error           => return Expr::Error(ExpectedError(("Lexing error! Most likely unmatched \".".into(), token))),
+            _                          => return Expr::Error(ExpectedError(("Start of expression.".into(), token))),
         };
 
         loop {
             let token = self.tokenizer.peek();
-            if token.typ == TokenType::EoF { break }
             println!("{:?}", token);
+            if token.typ == TokenType::EoF { break }
             let op = match token.typ {
                 TokenType::Minus        => BinaryType::Minus,
                 TokenType::Plus         => BinaryType::Plus,
@@ -197,7 +200,9 @@ impl Parser {
 
     fn parse_grouping(&mut self) -> Box<Expr> {
         let res = Box::new(self.parse_bp(0));
-        self.tokenizer.assert_next(TokenType::RightParen).unwrap();
+        if let Err(e) = self.tokenizer.assert_next(TokenType::RightParen) {
+            return Box::new(Expr::Error(e.into()))
+        }
         res
     }
 
@@ -226,7 +231,7 @@ enum Expr {
     Binary(BinaryExpr),
     Unary(UnaryExpr),
     Grouping(Box<Expr>),
-    Error,
+    Error(ExpectedError),
 }
 
 #[derive(Debug)]
@@ -271,7 +276,7 @@ impl Display for Expr {
             Expr::Bool(val)       => write!(f, "{}", val),
             Expr::Binary(val)     => write!(f, "({})", val),
             Expr::Grouping(val)   => write!(f, "({})", val),
-            Expr::Error           => todo!(),
+            Expr::Error(err)      => write!(f, "({})", err),
             Expr::Unary(val)      => write!(f, "{}", val),
             Expr::String(val)     => write!(f, "{}", val),
             Expr::Identifier(val) => write!(f, "{}", val),
@@ -346,7 +351,7 @@ impl Expr {
             Expr::Integer(num) => *num,
             Expr::Binary(b)    => b.eval(),
             Expr::Grouping(b)  => b.as_ref().eval(),
-            Expr::Error        => todo!(),
+            Expr::Error(err)   => panic!(),
             Expr::Unary(val)   => val.eval(),
             Expr::String(_) => todo!(),
             Expr::Identifier(_) => todo!(),
@@ -395,10 +400,36 @@ impl From<(TokenType, Token)> for ExpectedError {
     }
 }
 
+impl Display for ExpectedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Error: {}. Scanned Token: {}", self.0.0, self.0.1)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
+
+    fn test_program(source: &str) {
+        let parser = Parser::new(source.into());
+        let program = Program::new(parser);
+        if program.is_err() {
+            println!("{}", source);
+            println!("{:?}", program);
+        }
+        assert!(program.is_ok());
+    }
+
+    fn test_program_error(source: &str) {
+        let parser = Parser::new(source.into());
+        let program = Program::new(parser);
+        if program.is_ok() {
+            println!("SOURCE CODE: {}", source);
+            println!("{:?}", program);
+        }
+        assert!(program.is_err());
+    }
 
     fn test_eval(s: &str, res: &str, val: i64) {
         println!("TESTING: Parsing \"{}\"", s);
@@ -419,7 +450,7 @@ mod test {
         assert_eq!(parsed.to_string(), res);
     }
 
-    fn test_parser(s: &str, res: &str) {
+    fn parse_expr_to_s_expr(s: &str, res: &str) {
         println!("TESTING: Parsing \"{}\"", s);
         let mut parser = Parser::new(s.into());
 
@@ -462,14 +493,6 @@ mod test {
     }
 
     #[test]
-    fn program_test() {
-        let source = "let sneed = \"Seed and Feed\";\nlet abc = 1 + 2;".into();
-        let parser = Parser::new(source);
-        let program = Program::new(parser);
-        println!("{:?}", program);
-    }
-
-    #[test]
     fn unary() {
         test_eval("-1", "-1", -1);
         test_eval("-----1", "-----1", -1);
@@ -482,20 +505,46 @@ mod test {
     fn bool() {
         test_eval("true", "true", 1);
         test_eval("false", "false", 0);
-        test_parser("!true", "!true");
-        test_parser("!!!true", "!!!true");
-        test_parser("!!!!true", "!!!!true");
-        test_parser("true and true", "(and true true)");
-        test_parser("true or false", "(or true false)");
-        test_parser("true or false == true", "(or true (== false true))");
-        test_parser("3 < 5 == true", "(== (< 3 5) true)");
-        test_parser("3 <= 5 == true", "(== (<= 3 5) true)");
-        test_parser("3 > 5 == false", "(== (> 3 5) false)");
-        test_parser("3 >= 5 == true", "(== (>= 3 5) true)");
-        test_parser("3 != 5 == true", "(== (!= 3 5) true)");
-        test_parser("!false == true", "(== !false true)");
-        test_parser("3 < 5 and 4 == 4 == true", "(and (< 3 5) (== (== 4 4) true))");
+        parse_expr_to_s_expr("!true", "!true");
+        parse_expr_to_s_expr("!!!true", "!!!true");
+        parse_expr_to_s_expr("!!!!true", "!!!!true");
+        parse_expr_to_s_expr("true and true", "(and true true)");
+        parse_expr_to_s_expr("true or false", "(or true false)");
+        parse_expr_to_s_expr("true or false == true", "(or true (== false true))");
+        parse_expr_to_s_expr("3 < 5 == true", "(== (< 3 5) true)");
+        parse_expr_to_s_expr("3 <= 5 == true", "(== (<= 3 5) true)");
+        parse_expr_to_s_expr("3 > 5 == false", "(== (> 3 5) false)");
+        parse_expr_to_s_expr("3 >= 5 == true", "(== (>= 3 5) true)");
+        parse_expr_to_s_expr("3 != 5 == true", "(== (!= 3 5) true)");
+        parse_expr_to_s_expr("!false == true", "(== !false true)");
+        parse_expr_to_s_expr("3 < 5 and 4 == 4 == true", "(and (< 3 5) (== (== 4 4) true))");
     }
+
+    #[test]
+    fn program_test() {
+        test_program("let sneed = \"Seed and Feed\";\nlet abc = 1 + 2;");
+        test_program("");
+        test_program("foo;");
+        test_program("foo + bar == baz;");
+        test_program("((foo + bar == baz));");
+    }
+
+    #[test]
+    fn bad_program_test() {
+        test_program_error("1");
+        test_program_error("let sneed = \"Seed and Feed\";\nlet abc = 1 + 2");
+        test_program_error("foo");
+        test_program_error("\"aaaa");
+        test_program_error("(");
+        test_program_error(")");
+        test_program_error("((())");
+        test_program_error("\"\\");
+    }
+
+    // #[test]
+    // fn bad_input() {
+    //     parse_expr_to_s_expr("(", "(");
+    // }
 }
 
 

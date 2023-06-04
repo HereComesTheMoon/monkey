@@ -1,5 +1,5 @@
 use crate::tokens::{Token, TokenType};
-use std::mem::discriminant;
+// use std::mem::discriminant;
 
 #[derive(Clone)]
 pub struct Tokenizer {
@@ -15,36 +15,40 @@ impl Tokenizer {
     }
 }
 
-impl Iterator for Tokenizer {
+impl IntoIterator for Tokenizer {
     type Item = Token;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(mut self) -> Self::IntoIter {
+        let mut v = vec![];
         loop {
-            let token = self.peek();
+            let token = self.next();
             if token.typ == TokenType::EoF {
+                v.push(token);
                 break
             }
-            self.pos += token.len;
-            self.trim();
-            return Some(token);
+            v.push(token);
         }
-        
-        assert!(self.source.len() <= self.pos);
-        None
+        v.into_iter()
     }
 }
 
 impl Tokenizer {
+    pub fn next(&mut self) -> Token {
+        let token = self.peek();
+        self.pos += token.len;
+        self.trim();
+        return token
+    }
+
     #[must_use]
     pub fn assert_next(&mut self, typ: TokenType) -> Result<(), (TokenType, Token)> {
-        if let Some(token) = self.next() {
-            if token.typ != typ {
-                Err((typ, token))
-            } else {
-                Ok(())
-            }
+        let token = self.next();
+        if token.typ != typ {
+            Err((typ, token))
         } else {
-            panic!("No new token found!")
+            Ok(())
         }
     }
 
@@ -247,8 +251,9 @@ mod test {
 
         for (compare_token, s) in chars.into_iter() {
             let tokenizer = Tokenizer::new(s);
-            let mut tokens: Vec<_> = tokenizer.collect();
-            assert_eq!(tokens.len(), 1);
+            let mut tokens: Vec<_> = tokenizer.into_iter().collect();
+            assert_eq!(tokens.len(), 2);
+            tokens.pop().unwrap();
             let token = tokens.pop().unwrap();
             assert_eq!(compare_token, token.typ);
         }
