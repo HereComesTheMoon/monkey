@@ -54,16 +54,18 @@ pub enum TokenType {
 
     // Error
     Error,
-    // EOF, // unnecessary token?
+
+    // EoF
+    EoF,
 }
 
-impl Display for Token {
+impl Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let TokenType::Number(num) = &self.typ {
+        if let TokenType::Number(num) = &self {
             return write!(f, "{}", num)
         }
 
-        write!(f, "{}", match &self.typ {
+        write!(f, "{}", match self {
             TokenType::LeftParen     => "(",
             TokenType::RightParen    => ")",
             TokenType::LeftBrace     => "{",
@@ -96,6 +98,14 @@ impl Display for Token {
             TokenType::Number(_)     => unreachable!(),
             TokenType::Identifier(d) => d,
             TokenType::Error         => "ERROR",
+            TokenType::EoF           => "EoF",
         })
     }
 }
+
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.typ)
+    }
+}
+

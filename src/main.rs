@@ -17,6 +17,11 @@ fn main() {
     match args.len() {
         0 => run_prompt(),
         1 => run_file(&args[0]),
+        2 => {
+                let content = fs::read_to_string(&args[0]).unwrap();
+                let parser = Parser::new(content);
+                Program::new(parser).unwrap();
+            }
         _ => {
             println!("Bad arguments! {:?}", args);
             process::exit(64);
@@ -72,11 +77,12 @@ struct ExprStatement {
 }
 
 impl Program {
-    pub fn new(mut parser: Parser) -> Result<Self, (String, Token)> {
+    pub fn new(mut parser: Parser) -> Result<Self, ExpectedError> {
         let mut statements = vec![];
         loop {
-            if parser.tokens.len() <= parser.pos { break }
-            let res = match parser.peek() {
+            let token = parser.tokenizer.peek();
+            if token.typ == TokenType::EoF { break }
+            let res = match parser.tokenizer.peek().typ {
                 TokenType::Let => parser.parse_let(),
                 _              => parser.parse_expr_statement(),
             }?;
@@ -89,60 +95,39 @@ impl Program {
 
 
 struct Parser {
-    tokens: Vec<Token>,
-    pos: usize,
+    tokenizer: Tokenizer,
 }
 
 impl Parser {
     pub fn new(source: String) -> Self {
-        let tokens = Tokenizer::new(source).collect();
+        let tokenizer = Tokenizer::new(source);
         Parser {
-            tokens,
-            pos: 0,
+            tokenizer,
         }
     }
 
-    pub fn peek(&self) -> &TokenType {
-        &self.tokens[self.pos].typ
-    }
+    pub fn parse_let(&mut self) -> Result<Statement, ExpectedError> {
+        self.tokenizer.assert_next(TokenType::Let)?;
 
-    pub fn next(&mut self) -> &Token {
-        self.pos += 1;
-        &self.tokens[self.pos - 1]
-    }
-
-    pub fn parse_let(&mut self) -> Result<Statement, (String, Token)> {
-        assert_eq!(self.peek(), &TokenType::Let);
-        self.pos += 1;
-        let name = if let Token { typ: TokenType::Identifier(name), .. } = self.next() {
+        let name = if let Token { typ: TokenType::Identifier(name), .. } = self.tokenizer.peek() {
             name.clone()
         } else {
-            return Err(("Identifier".to_owned(), self.next().clone()))
+            return Err(ExpectedError(("Identifier".to_owned(), self.tokenizer.next().unwrap().clone())))
         };
 
-        if let TokenType::Equal = self.peek() {
-            self.next()
-        } else {
-            return Err(("=".to_owned(), self.next().clone()))
-        };
+        self.tokenizer.assert_next(TokenType::Equal)?;
 
         let val = self.parse();
 
-        let next = self.next();
-        if next.typ != TokenType::Semicolon {
-            return Err((";".to_owned(), next.clone()))
-        }
+        self.tokenizer.assert_next(TokenType::Semicolon)?;
 
         Ok(Statement::Let(LetStatement { name, val }))
     }
 
-    pub fn parse_expr_statement(&mut self) -> Result<Statement, (String, Token)> {
+    pub fn parse_expr_statement(&mut self) -> Result<Statement, ExpectedError> {
         let val = self.parse();
 
-        let next = self.next();
-        if next.typ != TokenType::Semicolon {
-            return Err((";".to_owned(), next.clone()))
-        }
+        self.tokenizer.assert_next(TokenType::Semicolon)?;
 
         Ok(Statement::Expr(ExprStatement { val }))
     }
@@ -154,27 +139,25 @@ impl Parser {
     }
 
     fn parse_bp(&mut self, min_bp: u8) -> Expr {
-        println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
-        let mut lhs = match self.peek() {
-            TokenType::Number(num)     => Expr::Integer(*num),
+        let token = self.tokenizer.next().expect("Parsing after EoF!");
+        println!("{:?}", token);
+        let mut lhs = match token.typ {
+            TokenType::Number(num)     => Expr::Integer(num),
             TokenType::False           => Expr::Bool(false),
             TokenType::True            => Expr::Bool(true),
             TokenType::String(val)     => Expr::String(val.clone()),
             TokenType::Identifier(val) => Expr::Identifier(val.clone()),
-            TokenType::Minus           => Expr::Unary(self.parse_unary()),
-            TokenType::Bang            => Expr::Unary(self.parse_unary()),
+            TokenType::Minus           => Expr::Unary(self.parse_unary(token.typ)),
+            TokenType::Bang            => Expr::Unary(self.parse_unary(token.typ)),
             TokenType::LeftParen       => Expr::Grouping(self.parse_grouping()),
             _                          => panic!("Oh no???"),
         };
 
-        self.pos += 1;
-
         loop {
-            if self.tokens.len() <= self.pos {
-                break
-            }
-            println!("{:?} {:?}", self.pos, self.tokens[self.pos]);
-            let op = match self.peek() {
+            let token = self.tokenizer.peek();
+            if token.typ == TokenType::EoF { break }
+            println!("{:?}", token);
+            let op = match token.typ {
                 TokenType::Minus        => BinaryType::Minus,
                 TokenType::Plus         => BinaryType::Plus,
                 TokenType::Slash        => BinaryType::Slash,
@@ -198,7 +181,7 @@ impl Parser {
                 break
             }
 
-            self.pos += 1;
+            self.tokenizer.next();
 
             let rhs = self.parse_bp(r_bp);
 
@@ -213,15 +196,13 @@ impl Parser {
     }
 
     fn parse_grouping(&mut self) -> Box<Expr> {
-        assert_eq!(self.peek(), &TokenType::LeftParen);
-        self.pos += 1;
         let res = Box::new(self.parse_bp(0));
-        assert_eq!(self.peek(), &TokenType::RightParen);
+        self.tokenizer.assert_next(TokenType::RightParen).unwrap();
         res
     }
 
-    fn parse_unary(&mut self) -> UnaryExpr {
-        let op = match self.next().typ {
+    fn parse_unary(&mut self, typ: TokenType) -> UnaryExpr {
+        let op = match typ {
             TokenType::Minus => UnaryType::Minus,
             TokenType::Bang => UnaryType::Bang,
             _ => todo!(),
@@ -230,7 +211,6 @@ impl Parser {
         let (_, r_bp) = op.binding_power();
 
         let val = Box::new(self.parse_bp(r_bp));
-        self.pos -= 1;
 
         UnaryExpr { op, val }
     }
@@ -406,6 +386,15 @@ impl UnaryExpr {
 }
 
 
+#[derive(Debug)]
+struct ExpectedError((String, Token));
+
+impl From<(TokenType, Token)> for ExpectedError {
+    fn from(value: (TokenType, Token)) -> Self {
+        ExpectedError((value.0.to_string(), value.1))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -416,7 +405,7 @@ mod test {
         let mut parser = Parser::new(s.into());
 
         print!("TOKENS: ");
-        for token in parser.tokens.iter() {
+        for token in parser.tokenizer.clone() {
             print!("{} ", token);
         }
         println!("");
@@ -435,7 +424,7 @@ mod test {
         let mut parser = Parser::new(s.into());
 
         print!("TOKENS: ");
-        for token in parser.tokens.iter() {
+        for token in parser.tokenizer.clone() {
             print!("{} ", token);
         }
         println!("");

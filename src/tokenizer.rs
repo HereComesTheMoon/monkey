@@ -1,4 +1,5 @@
 use crate::tokens::{Token, TokenType};
+use std::mem::discriminant;
 
 #[derive(Clone)]
 pub struct Tokenizer {
@@ -18,7 +19,11 @@ impl Iterator for Tokenizer {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(token) = self.peek() {
+        loop {
+            let token = self.peek();
+            if token.typ == TokenType::EoF {
+                break
+            }
             self.pos += token.len;
             self.trim();
             return Some(token);
@@ -30,27 +35,66 @@ impl Iterator for Tokenizer {
 }
 
 impl Tokenizer {
-    fn trim(&mut self) {
-        let s = self.source.get(self.pos..);
-        if s.is_none() {
-            assert!(self.pos < self.source.len());
-            return;
+    #[must_use]
+    pub fn assert_next(&mut self, typ: TokenType) -> Result<(), (TokenType, Token)> {
+        if let Some(token) = self.next() {
+            if token.typ != typ {
+                Err((typ, token))
+            } else {
+                Ok(())
+            }
+        } else {
+            panic!("No new token found!")
         }
-        self.pos += s
-            .unwrap()
-            .char_indices()
-            .take_while(|(_, c)| c.is_whitespace())
-            .map(|(i, _)| i + 1)
-            .last()
-            .unwrap_or(0);
     }
 
-    fn peek(&self) -> Option<Token> {
+    // #[must_use]
+    // pub fn try_next(&mut self, typ: TokenType) -> Result<Token, (TokenType, Token)> {
+    //     if let Some(token) = self.next() {
+    //         if token.typ != typ {
+    //             Err((typ, token))
+    //         } else {
+    //             Ok(token)
+    //         }
+    //     } else {
+    //         panic!("No new token found!")
+    //     }
+    // }
+
+    // #[must_use]
+    // pub fn assert_next_type(&mut self, typ: TokenType) -> Result<(), (TokenType, Token)> {
+    //     if let Some(token) = self.next() {
+    //         if discriminant(&token.typ) == discriminant(&typ) {
+    //             Err((typ, token))
+    //         } else {
+    //             Ok(())
+    //         }
+    //     } else {
+    //         panic!("No new token found!")
+    //     }
+    // }
+
+    // #[must_use]
+    // pub fn try_next_type(&mut self, typ: TokenType) -> Result<Token, (TokenType, Token)> {
+    //     if let Some(token) = self.next() {
+    //         if discriminant(&token.typ) == discriminant(&typ) {
+    //             Err((typ, token))
+    //         } else {
+    //             Ok(token)
+    //         }
+    //     } else {
+    //         panic!("No new token found!")
+    //     }
+    // }
+
+
+    pub fn peek(&self) -> Token {
         let pos = self.pos;
         let s = &self.source[pos..];
 
         if s.is_empty() {
-            return None;
+            assert_eq!(self.pos, self.source.len());
+            return Token { typ: TokenType:: EoF, pos: self.source.len(), len: 0 };
         }
 
         let mut prefix = [' '; 7];
@@ -59,7 +103,7 @@ impl Tokenizer {
         }
 
         #[rustfmt::skip]
-        return Some(match prefix {
+        return match prefix {
             ['(',..]                                                  => Token { typ: TokenType::LeftParen,    pos, len: 1 },
             [')',..]                                                  => Token { typ: TokenType::RightParen,   pos, len: 1 },
             ['{',..]                                                  => Token { typ: TokenType::LeftBrace,    pos, len: 1 },
@@ -92,7 +136,22 @@ impl Tokenizer {
             ['"',..]                                                  => self.parse_string(),
             ['a'..='z' | 'A'..='Z',..]                                => self.parse_identifier(),
             t                                                         => todo!("{t:?}"),
-        });
+        };
+    }
+
+    fn trim(&mut self) {
+        let s = self.source.get(self.pos..);
+        if s.is_none() {
+            assert!(self.pos < self.source.len());
+            return;
+        }
+        self.pos += s
+            .unwrap()
+            .char_indices()
+            .take_while(|(_, c)| c.is_whitespace())
+            .map(|(i, _)| i + 1)
+            .last()
+            .unwrap_or(0);
     }
 
     fn parse_number(&self) -> Token {
