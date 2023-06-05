@@ -48,7 +48,7 @@ fn run_prompt() {
     }
 }
 
-fn run(source: String) -> Expr {
+fn run(source: String) -> Result<Expr, ExpectedError> {
     // let sc = Scanner::new(source);
     let mut parser = Parser::new(source);
     parser.parse()
@@ -106,6 +106,16 @@ impl Parser {
         }
     }
 
+    pub fn parse_statement(&mut self) -> Result<Statement, ExpectedError> {
+        let token = self.tokenizer.peek();
+        let res = match self.tokenizer.peek().typ {
+            TokenType::Let => self.parse_let(),
+            _              => self.parse_expr_statement(),
+        };
+
+        res
+    }
+
     pub fn parse_let(&mut self) -> Result<Statement, ExpectedError> {
         self.tokenizer.assert_next(TokenType::Let)?;
 
@@ -118,7 +128,7 @@ impl Parser {
 
         self.tokenizer.assert_next(TokenType::Equal)?;
 
-        let val = self.parse().is_err()?;
+        let val = self.parse()?;
 
         self.tokenizer.assert_next(TokenType::Semicolon)?;
 
@@ -127,7 +137,7 @@ impl Parser {
 
     pub fn parse_expr_statement(&mut self) -> Result<Statement, ExpectedError> {
         // let val = self.parse().is_err()?;
-        let val = self.parse().is_err()?;
+        let val = self.parse()?;
 
         self.tokenizer.assert_next(TokenType::Semicolon)?;
 
@@ -136,45 +146,49 @@ impl Parser {
 }
 
 impl Parser {
-    pub fn parse(&mut self) -> Expr {
+    pub fn parse(&mut self) -> Result<Expr, ExpectedError> {
         self.parse_bp(0)
     }
 
-    fn parse_bp(&mut self, min_bp: u8) -> Expr {
+    fn parse_bp(&mut self, min_bp: u8) -> Result<Expr, ExpectedError> {
         let token = self.tokenizer.next();
-        println!("{:?}", token);
+        println!("Start: {:?}", token);
         let mut lhs = match token.typ {
-            TokenType::Number(num)     => Expr::Integer(num),
+            TokenType::Bang            => Expr::Unary(self.parse_unary(token.typ)?),
+            TokenType::EoF             => return Err(ExpectedError(("Some token.".into(), token))),
+            TokenType::Error           => return Err(ExpectedError(("Lexing error! Most likely unmatched \".".into(), token))),
             TokenType::False           => Expr::Bool(false),
-            TokenType::True            => Expr::Bool(true),
-            TokenType::String(val)     => Expr::String(val.clone()),
             TokenType::Identifier(val) => Expr::Identifier(val.clone()),
-            TokenType::Minus           => Expr::Unary(self.parse_unary(token.typ)),
-            TokenType::Bang            => Expr::Unary(self.parse_unary(token.typ)),
-            TokenType::LeftParen       => Expr::Grouping(self.parse_grouping()),
-            TokenType::EoF             => return Expr::Error(ExpectedError(("Some token.".into(), token))),
-            TokenType::Error           => return Expr::Error(ExpectedError(("Lexing error! Most likely unmatched \".".into(), token))),
-            _                          => return Expr::Error(ExpectedError(("Start of expression.".into(), token))),
+            TokenType::If              => self.parse_if()?,
+            TokenType::LeftBrace       => self.parse_block()?,
+            TokenType::LeftParen       => self.parse_grouping()?,
+            TokenType::Minus           => Expr::Unary(self.parse_unary(token.typ)?),
+            TokenType::Number(num)     => Expr::Integer(num),
+            TokenType::String(val)     => Expr::String(val.clone()),
+            TokenType::True            => Expr::Bool(true),
+            _                          => return Err(ExpectedError(("Start of expression.".into(), token))),
         };
 
         loop {
             let token = self.tokenizer.peek();
-            println!("{:?}", token);
-            if token.typ == TokenType::EoF { break }
+            println!("Loop: {:?}", token);
             let op = match token.typ {
+                TokenType::And          => BinaryType::And,
+                TokenType::BangEqual    => BinaryType::BangEqual,
+                TokenType::Else         => break,
+                TokenType::EoF          => break,
+                TokenType::EqualEqual   => BinaryType::EqualEqual,
+                TokenType::Greater      => BinaryType::Greater,
+                TokenType::GreaterEqual => BinaryType::GreaterEqual,
+                TokenType::Less         => BinaryType::Less,
+                TokenType::LessEqual    => BinaryType::LessEqual,
                 TokenType::Minus        => BinaryType::Minus,
                 TokenType::Plus         => BinaryType::Plus,
+                TokenType::RightParen   => break,
+                TokenType::RightBrace   => break,
+                TokenType::Semicolon    => break,
                 TokenType::Slash        => BinaryType::Slash,
                 TokenType::Star         => BinaryType::Star,
-                TokenType::RightParen   => break,
-                TokenType::Semicolon    => break,
-                TokenType::GreaterEqual => BinaryType::GreaterEqual,
-                TokenType::Greater      => BinaryType::Greater,
-                TokenType::LessEqual    => BinaryType::LessEqual,
-                TokenType::Less         => BinaryType::Less,
-                TokenType::BangEqual    => BinaryType::BangEqual,
-                TokenType::EqualEqual   => BinaryType::EqualEqual,
-                TokenType::And          => BinaryType::And,
                 TokenType::Or           => BinaryType::Or,
                 t                       => todo!("{t:?}"),
             };
@@ -192,22 +206,51 @@ impl Parser {
             lhs = Expr::Binary(BinaryExpr {
                 left: Box::new(lhs),
                 op,
-                right: Box::new(rhs),
+                right: Box::new(rhs?),
             });
         }
 
-        lhs
+        Ok(lhs)
     }
 
-    fn parse_grouping(&mut self) -> Box<Expr> {
-        let res = Box::new(self.parse_bp(0));
-        if let Err(e) = self.tokenizer.assert_next(TokenType::RightParen) {
-            return Box::new(Expr::Error(e.into()))
+    fn parse_block(&mut self) -> Result<Expr, ExpectedError> {
+        // self.tokenizer.assert_next(TokenType::LeftBrace)?;
+        let mut statements = vec![];
+        loop {
+            if let TokenType::RightBrace = self.tokenizer.peek().typ {
+                break;
+            }
+            let next_statement = self.parse_statement()?;
+            statements.push(next_statement);
         }
-        res
+        self.tokenizer.assert_next(TokenType::RightBrace)?;
+        Ok(Expr::Block(statements))
     }
 
-    fn parse_unary(&mut self, typ: TokenType) -> UnaryExpr {
+    fn parse_if(&mut self) -> Result<Expr, ExpectedError> {
+        self.tokenizer.assert_next(TokenType::LeftParen)?;
+        let cond = Box::new(self.parse_bp(0)?);
+        self.tokenizer.assert_next(TokenType::RightParen)?;
+        self.tokenizer.assert_next(TokenType::LeftBrace)?;
+        let cons = Box::new(self.parse_block()?);
+
+        let alt = if let TokenType::Else = self.tokenizer.peek().typ {
+            self.tokenizer.assert_next(TokenType::Else)?;
+            self.tokenizer.assert_next(TokenType::LeftBrace)?;
+            Some(Box::new(self.parse_block()?))
+        } else { None };
+
+        Ok(Expr::If(IfExpr { cond, cons, alt }))
+        
+    }
+
+    fn parse_grouping(&mut self) -> Result<Expr, ExpectedError> {
+        let res = Box::new(self.parse_bp(0)?);
+        self.tokenizer.assert_next(TokenType::RightParen)?;
+        Ok(Expr::Grouping(res))
+    }
+
+    fn parse_unary(&mut self, typ: TokenType) -> Result<UnaryExpr, ExpectedError> {
         let op = match typ {
             TokenType::Minus => UnaryType::Minus,
             TokenType::Bang => UnaryType::Bang,
@@ -216,9 +259,9 @@ impl Parser {
 
         let (_, r_bp) = op.binding_power();
 
-        let val = Box::new(self.parse_bp(r_bp));
+        let val = Box::new(self.parse_bp(r_bp)?);
 
-        UnaryExpr { op, val }
+        Ok(UnaryExpr { op, val })
     }
 }
 
@@ -226,7 +269,7 @@ impl Parser {
 #[derive(Debug)]
 enum Expr {
     Binary(BinaryExpr),
-    Block(BlockExpr),
+    Block(Vec<Statement>),
     Bool(bool),
     Error(ExpectedError),
     Grouping(Box<Expr>),
@@ -268,8 +311,8 @@ struct BlockExpr {
 #[derive(Debug)]
 struct IfExpr {
     cond: Box<Expr>,
-    cons: BlockExpr,
-    alt: Option<BlockExpr>,
+    cons: Box<Expr>,
+    alt: Option<Box<Expr>>,
 }
 
 #[derive(Debug)]
@@ -328,7 +371,13 @@ impl Display for Expr {
             Expr::Unary(val)      => write!(f, "{}", val),
             Expr::String(val)     => write!(f, "{}", val),
             Expr::Identifier(val) => write!(f, "{}", val),
-            Expr::Block(val)      => write!(f, "{}", val),
+            Expr::Block(val)      => {
+                let mut s = String::new();
+                s.extend(
+                    val.iter().map(|stmt| format!("{}", stmt))
+                );
+                write!(f, "{{{}}}", s)
+            },
             Expr::If(val)         => write!(f, "{}", val),
         }
     }
@@ -338,19 +387,19 @@ impl Display for BlockExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = String::new();
         s.extend(
-            self.statements.iter().map(|stmt| format!("\t{}", stmt))
+            self.statements.iter().map(|stmt| format!("{}", stmt))
         );
 
-        write!(f, "{{\n{}}}", s)
+        write!(f, "{{{}}}", s)
     }
 }
 
 impl Display for IfExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.alt.is_some() {
-            write!(f, "if ({}) {{\n{}}} else {{\n{}}}\n", self.cond, self.cons, *self.alt.as_ref().unwrap())
+            write!(f, "if {} {} else {}", self.cond, self.cons, *self.alt.as_ref().unwrap())
         } else {
-            write!(f, "if ({}) {{\n{}}}", self.cond, self.cons)
+            write!(f, "if ({}) {{ {} }}", self.cond, self.cons)
         }
     }
 }
@@ -472,9 +521,15 @@ impl From<(TokenType, Token)> for ExpectedError {
     }
 }
 
+impl From<ExpectedError> for Expr {
+    fn from(value: ExpectedError) -> Self {
+        Expr::Error(ExpectedError((value.0.0, value.0.1)))
+    }
+}
+
 impl Display for ExpectedError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error: {}. Scanned Token: {}", self.0.0, self.0.1)
+        write!(f, "ERROR[{},{}]", self.0.0, self.0.1)
     }
 }
 
@@ -503,7 +558,7 @@ mod test {
         assert!(program.is_err());
     }
 
-    fn test_eval(s: &str, res: &str, val: i64) {
+    fn test_eval(s: &str, res: &str, val: i64) -> Result<(), ExpectedError> {
         println!("TESTING: Parsing \"{}\"", s);
         let mut parser = Parser::new(s.into());
 
@@ -514,15 +569,16 @@ mod test {
         println!("");
         println!("PARSING...");
 
-        let parsed = parser.parse();
+        let parsed = parser.parse()?;
 
         println!("EVALUATING...");
         let output = parsed.eval();
         assert_eq!(val, output);
         assert_eq!(parsed.to_string(), res);
+        Ok(())
     }
 
-    fn parse_expr_to_s_expr(s: &str, res: &str) {
+    fn parse_expr_to_s_expr(s: &str, res: &str) -> Result<(), ExpectedError> {
         println!("TESTING: Parsing \"{}\"", s);
         let mut parser = Parser::new(s.into());
 
@@ -533,10 +589,12 @@ mod test {
         println!("");
         println!("PARSING...");
 
-        let parsed = parser.parse();
+        let parsed = parser.parse()?;
 
         println!("EVALUATING...");
+        println!("{:#?}", parsed);
         assert_eq!(parsed.to_string(), res);
+        Ok(())
     }
 
     #[test]
@@ -611,18 +669,21 @@ mod test {
         test_program_error(")");
         test_program_error("((())");
         test_program_error("\"\\");
+        parse_expr_to_s_expr("(1", "(ERROR[),EoF])");
     }
 
     #[test]
     fn if_test() {
         test_program("if (3 < 5) {\n\tlet a = 7;\n} else {\n\t1+2;\n};");
         test_program("if (3 < 5) {\n\tlet a = 7;\n};");
+        parse_expr_to_s_expr("if (x < y) {\nlet foo = z;\n7;\n} else {};", "if (< x y) {let foo = z;7;} else {}");
     }
 
     #[test]
     fn block_test() {
         test_program("{\na + b;\nlet banana = \"foo\";\n};");
         test_program("{};");
+        test_program("{{};};");
     }
 }
 
