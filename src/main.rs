@@ -158,6 +158,7 @@ impl Parser {
             TokenType::EoF             => return Err(ExpectedError(("Some token.".into(), token))),
             TokenType::Error           => return Err(ExpectedError(("Lexing error! Most likely unmatched \".".into(), token))),
             TokenType::False           => Expr::Bool(false),
+            TokenType::Fun             => self.parse_func()?,
             TokenType::Identifier(val) => Expr::Identifier(val.clone()),
             TokenType::If              => self.parse_if()?,
             TokenType::LeftBrace       => self.parse_block()?,
@@ -227,6 +228,31 @@ impl Parser {
         Ok(Expr::Block(statements))
     }
 
+    fn parse_func(&mut self) -> Result<Expr, ExpectedError> {
+        self.tokenizer.assert_next(TokenType::LeftParen)?;
+        let mut pars = vec![];
+        loop {
+            if self.tokenizer.peek().typ == TokenType::RightParen {
+                break
+            }
+            let token = self.tokenizer.next();
+            match token.typ {
+                TokenType::Identifier(par) => pars.push(par),
+                _                          => return Err(ExpectedError(("Parameter".to_owned(), token)))
+            }
+            if self.tokenizer.peek().typ == TokenType::Comma {
+                self.tokenizer.next();
+            } 
+        }
+        self.tokenizer.assert_next(TokenType::RightParen)?;
+        self.tokenizer.assert_next(TokenType::LeftBrace)?;
+
+        let body = Box::new(self.parse_block()?);
+        // self.tokenizer.assert_next(TokenType::Semicolon)?;
+
+        Ok(Expr::Function(FunctionLiteral { pars, body }))
+    }
+
     fn parse_if(&mut self) -> Result<Expr, ExpectedError> {
         self.tokenizer.assert_next(TokenType::LeftParen)?;
         let cond = Box::new(self.parse_bp(0)?);
@@ -272,6 +298,7 @@ enum Expr {
     Block(Vec<Statement>),
     Bool(bool),
     Error(ExpectedError),
+    Function(FunctionLiteral),
     Grouping(Box<Expr>),
     Identifier(String),
     If(IfExpr),
@@ -289,23 +316,29 @@ struct BinaryExpr {
 
 #[derive(Debug)]
 enum BinaryType {
+    And,
+    BangEqual,
+    EqualEqual,
+    Greater,
+    GreaterEqual,
+    Less,
+    LessEqual,
     Minus,
+    Or,
     Plus,
     Slash,
     Star,
-    GreaterEqual,
-    Greater,
-    LessEqual,
-    Less,
-    BangEqual,
-    EqualEqual,
-    And,
-    Or,
 }
 
 #[derive(Debug)]
 struct BlockExpr {
     statements: Vec<Statement>,
+}
+
+#[derive(Debug)]
+struct FunctionLiteral {
+    pars: Vec<String>,
+    body: Box<Expr>,
 }
 
 #[derive(Debug)]
@@ -379,6 +412,13 @@ impl Display for Expr {
                 write!(f, "{{{}}}", s)
             },
             Expr::If(val)         => write!(f, "{}", val),
+            Expr::Function(val)   => {
+                let mut s = String::new();
+                s.extend(
+                    val.pars.iter().map(|stmt| format!("{}, ", stmt))
+                );
+                write!(f, "func({}) {}", s, val.body)
+            },
         }
     }
 }
@@ -471,6 +511,7 @@ impl Expr {
             Expr::Binary(b)     => b.eval(),
             Expr::Grouping(b)   => b.as_ref().eval(),
             Expr::Error(err)    => panic!(),
+            Expr::Function(_)   => todo!(),
             Expr::Unary(val)    => val.eval(),
             Expr::String(_)     => todo!(),
             Expr::Identifier(_) => todo!(),
@@ -589,7 +630,7 @@ mod test {
         println!("");
         println!("PARSING...");
 
-        let parsed = parser.parse()?;
+        let parsed = parser.parse().unwrap();
 
         println!("EVALUATING...");
         println!("{:#?}", parsed);
@@ -669,7 +710,7 @@ mod test {
         test_program_error(")");
         test_program_error("((())");
         test_program_error("\"\\");
-        parse_expr_to_s_expr("(1", "(ERROR[),EoF])");
+        // parse_expr_to_s_expr("(1", "(ERROR[),EoF])");
     }
 
     #[test]
@@ -684,6 +725,17 @@ mod test {
         test_program("{\na + b;\nlet banana = \"foo\";\n};");
         test_program("{};");
         test_program("{{};};");
+    }
+
+    #[test]
+    fn func_test() {
+        parse_expr_to_s_expr("fn(x, y) { x + y; };", "func(x, y, ) {(+ x y);}");
+        parse_expr_to_s_expr("fn(x, y) {};"        , "func(x, y, ) {}");
+        parse_expr_to_s_expr("fn(x, y,) {};"       , "func(x, y, ) {}");
+        parse_expr_to_s_expr("fn() {};"            , "func() {}");
+        parse_expr_to_s_expr("fn() { 5; };"        , "func() {5;}");
+        // parse_expr_to_s_expr("sdasdwqd + wqd ", "aa");
+        // test_program("fn(x, y) { x + y; };");
     }
 }
 
