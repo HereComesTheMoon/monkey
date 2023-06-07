@@ -63,6 +63,7 @@ struct Program {
 enum Statement {
     Let(LetStatement),
     Expr(ExprStatement),
+    Return(ReturnStatement),
 }
 
 #[derive(Debug)]
@@ -76,17 +77,17 @@ struct ExprStatement {
     val: Expr,
 }
 
+#[derive(Debug)]
+struct ReturnStatement {
+    val: Expr,
+}
+
 impl Program {
     pub fn new(mut parser: Parser) -> Result<Self, ExpectedError> {
         let mut statements = vec![];
         loop {
-            let token = parser.tokenizer.peek();
-            if token.typ == TokenType::EoF { break }
-            let res = match parser.tokenizer.peek().typ {
-                TokenType::Let => parser.parse_let(),
-                _              => parser.parse_expr_statement(),
-            }?;
-
+            if parser.tokenizer.peek().typ == TokenType::EoF { break }
+            let res = parser.parse_statement()?;
             statements.push(res);
         }
         Ok(Program { statements })
@@ -109,14 +110,15 @@ impl Parser {
     pub fn parse_statement(&mut self) -> Result<Statement, ExpectedError> {
         let token = self.tokenizer.peek();
         let res = match self.tokenizer.peek().typ {
-            TokenType::Let => self.parse_let(),
+            TokenType::Let => self.parse_let_statement(),
+            TokenType::Return => self.parse_return_statement(),
             _              => self.parse_expr_statement(),
         };
 
         res
     }
 
-    pub fn parse_let(&mut self) -> Result<Statement, ExpectedError> {
+    pub fn parse_let_statement(&mut self) -> Result<Statement, ExpectedError> {
         self.tokenizer.assert_next(TokenType::Let)?;
 
         let name = if let Token { typ: TokenType::Identifier(name), .. } = self.tokenizer.peek() {
@@ -142,6 +144,14 @@ impl Parser {
         self.tokenizer.assert_next(TokenType::Semicolon)?;
 
         Ok(Statement::Expr(ExprStatement { val }))
+    }
+
+    pub fn parse_return_statement(&mut self) -> Result<Statement, ExpectedError> {
+        self.tokenizer.assert_next(TokenType::Return)?;
+        let val = self.parse()?;
+        self.tokenizer.assert_next(TokenType::Semicolon)?;
+
+        Ok(Statement::Return(ReturnStatement { val }))
     }
 }
 
@@ -372,8 +382,9 @@ impl Expr {
 impl Display for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Statement::Let(val)  => write!(f, "{}", val),
-            Statement::Expr(val) => write!(f, "{}", val),
+            Statement::Let(val)    => write!(f, "{}", val),
+            Statement::Expr(val)   => write!(f, "{}", val),
+            Statement::Return(val) => write!(f, "{}", val),
         }
     }
 }
@@ -389,6 +400,12 @@ impl Display for LetStatement {
 impl Display for ExprStatement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{};", self.val)
+    }
+}
+
+impl Display for ReturnStatement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "return {};", self.val)
     }
 }
 
@@ -698,6 +715,9 @@ mod test {
         test_program("foo;");
         test_program("foo + bar == baz;");
         test_program("((foo + bar == baz));");
+        test_program("return 1;");
+        test_program("return { return 1; };");
+
     }
 
     #[test]
