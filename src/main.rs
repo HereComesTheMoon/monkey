@@ -165,8 +165,8 @@ impl Parser {
         println!("Start: {:?}", token);
         let mut lhs = match token.typ {
             TokenType::Bang            => Expr::Unary(self.parse_unary(token.typ)?),
-            TokenType::EoF             => return Err(ExpectedError(("Some token.".into(), token))),
-            TokenType::Error           => return Err(ExpectedError(("Lexing error! Most likely unmatched \".".into(), token))),
+            TokenType::EoF             => return Err(ExpectedError(("Expression".into(), token))),
+            TokenType::Error           => return Err(ExpectedError(("Expression".into(), token))),
             TokenType::False           => Expr::Bool(false),
             TokenType::Fun             => self.parse_func()?,
             TokenType::Identifier(val) => Expr::Identifier(val.clone()),
@@ -177,8 +177,12 @@ impl Parser {
             TokenType::Number(num)     => Expr::Integer(num),
             TokenType::String(val)     => Expr::String(val.clone()),
             TokenType::True            => Expr::Bool(true),
-            _                          => return Err(ExpectedError(("Start of expression.".into(), token))),
+            _                          => return Err(ExpectedError(("Expression".into(), token))),
         };
+
+        if self.tokenizer.peek().typ == TokenType::LeftParen {
+            lhs = self.parse_func_call(lhs)?;
+        }
 
         loop {
             let token = self.tokenizer.peek();
@@ -186,6 +190,7 @@ impl Parser {
             let op = match token.typ {
                 TokenType::And          => BinaryType::And,
                 TokenType::BangEqual    => BinaryType::BangEqual,
+                TokenType::Comma        => break,
                 TokenType::Else         => break,
                 TokenType::EoF          => break,
                 TokenType::EqualEqual   => BinaryType::EqualEqual,
@@ -263,6 +268,23 @@ impl Parser {
         Ok(Expr::Function(FunctionLiteral { pars, body }))
     }
 
+    fn parse_func_call(&mut self, func: Expr) -> Result<Expr, ExpectedError> {
+        self.tokenizer.assert_next(TokenType::LeftParen)?;
+        let mut args = vec![];
+        loop {
+            if self.tokenizer.peek().typ == TokenType::RightParen {
+                break;
+            }
+            let arg = self.parse()?;
+            args.push(arg);
+            if self.tokenizer.peek().typ == TokenType::Comma {
+                self.tokenizer.next();
+            }
+        }
+        let func = Box::new(func);
+        Ok(Expr::FunctionCall(FunctionCall { func, args }))
+    }
+
     fn parse_if(&mut self) -> Result<Expr, ExpectedError> {
         self.tokenizer.assert_next(TokenType::LeftParen)?;
         let cond = Box::new(self.parse_bp(0)?);
@@ -315,6 +337,7 @@ enum Expr {
     Integer(i64),
     String(String),
     Unary(UnaryExpr),
+    FunctionCall(FunctionCall),
 }
 
 #[derive(Debug)]
@@ -349,6 +372,12 @@ struct BlockExpr {
 struct FunctionLiteral {
     pars: Vec<String>,
     body: Box<Expr>,
+}
+
+#[derive(Debug)]
+struct FunctionCall {
+    func: Box<Expr>,
+    args: Vec<Expr>,
 }
 
 #[derive(Debug)]
@@ -431,10 +460,23 @@ impl Display for Expr {
             Expr::If(val)         => write!(f, "{}", val),
             Expr::Function(val)   => {
                 let mut s = String::new();
+                if let Some(par) = val.pars.first() {
+                    s.push_str(&format!("{}", par));
+                }
                 s.extend(
-                    val.pars.iter().map(|stmt| format!("{}, ", stmt))
+                    val.pars.iter().skip(1).map(|stmt| format!(", {}", stmt))
                 );
                 write!(f, "func({}) {}", s, val.body)
+            },
+            Expr::FunctionCall(val)   => {
+                let mut s = String::new();
+                if let Some(arg) = val.args.first() {
+                    s.push_str(&format!("{}", arg));
+                }
+                s.extend(
+                    val.args.iter().skip(1).map(|arg| format!(", {}", arg))
+                );
+                write!(f, "{}({})", val.func, s)
             },
         }
     }
@@ -535,6 +577,7 @@ impl Expr {
             Expr::Bool(val)     => *val as i64,
             Expr::Block(_)      => todo!(),
             Expr::If(_)         => todo!(),
+            Expr::FunctionCall(_) => todo!(),
         }
     }
 }
@@ -593,6 +636,8 @@ impl Display for ExpectedError {
 
 #[cfg(test)]
 mod test {
+    use std::println;
+
     use super::*;
 
 
@@ -616,7 +661,7 @@ mod test {
         assert!(program.is_err());
     }
 
-    fn test_eval(s: &str, res: &str, val: i64) -> Result<(), ExpectedError> {
+    fn test_expr_error(s: &str, res: &str) {
         println!("TESTING: Parsing \"{}\"", s);
         let mut parser = Parser::new(s.into());
 
@@ -627,16 +672,31 @@ mod test {
         println!("");
         println!("PARSING...");
 
-        let parsed = parser.parse()?;
+        let parsed = parser.parse().unwrap_err();
+
+        assert_eq!(parsed.to_string(), res);
+    }
+
+    fn eval_expr_eq(s: &str, res: &str, val: i64) {
+        println!("TESTING: Parsing \"{}\"", s);
+        let mut parser = Parser::new(s.into());
+
+        print!("TOKENS: ");
+        for token in parser.tokenizer.clone() {
+            print!("{} ", token);
+        }
+        println!("");
+        println!("PARSING...");
+
+        let parsed = parser.parse().unwrap();
 
         println!("EVALUATING...");
         let output = parsed.eval();
         assert_eq!(val, output);
         assert_eq!(parsed.to_string(), res);
-        Ok(())
     }
 
-    fn parse_expr_to_s_expr(s: &str, res: &str) -> Result<(), ExpectedError> {
+    fn parse_expr_to_s_expr(s: &str, res: &str)  {
         println!("TESTING: Parsing \"{}\"", s);
         let mut parser = Parser::new(s.into());
 
@@ -652,47 +712,46 @@ mod test {
         println!("EVALUATING...");
         println!("{:#?}", parsed);
         assert_eq!(parsed.to_string(), res);
-        Ok(())
     }
 
     #[test]
     fn grouping() {
-        test_eval("(1)"        , "(1)" , 1); 
-        test_eval("(1 - 1)"    , "((- 1 1))" , 0); 
-        test_eval("1 - (1 - 1)", "(- 1 ((- 1 1)))" , 1); 
-        test_eval("((1))", "((1))" , 1); 
+        eval_expr_eq("(1)"        , "(1)" , 1); 
+        eval_expr_eq("(1 - 1)"    , "((- 1 1))" , 0); 
+        eval_expr_eq("1 - (1 - 1)", "(- 1 ((- 1 1)))" , 1); 
+        eval_expr_eq("((1))", "((1))" , 1); 
     }
 
     #[test]
     fn grouping2() {
-        test_eval("1 - (1) - 1"        , "(- (- 1 (1)) 1)" , -1); 
-        test_eval("1 - (1 - (1))"        , "(- 1 ((- 1 (1))))" , 1); 
-        test_eval("((1) - 1)"        , "((- (1) 1))" , 0); 
-        test_eval("1 - ((1) - 1)"        , "(- 1 ((- (1) 1)))" , 1); 
+        eval_expr_eq("1 - (1) - 1",   "(- (- 1 (1)) 1)" , -1); 
+        eval_expr_eq("1 - (1 - (1))", "(- 1 ((- 1 (1))))" , 1); 
+        eval_expr_eq("((1) - 1)",     "((- (1) 1))" , 0); 
+        eval_expr_eq("1 - ((1) - 1)", "(- 1 ((- (1) 1)))" , 1); 
     }
 
     #[test]
     fn binary_operator_precedence() {
-        test_eval("1", "1", 1);
-        test_eval("1 + 2 * 3", "(+ 1 (* 2 3))", 7);
-        test_eval("1 * 2 + 3", "(+ (* 1 2) 3)", 5);
-        test_eval("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
-        test_eval("1 - 1 - 1", "(- (- 1 1) 1)", -1);
+        eval_expr_eq("1", "1", 1);
+        eval_expr_eq("1 + 2 * 3", "(+ 1 (* 2 3))", 7);
+        eval_expr_eq("1 * 2 + 3", "(+ (* 1 2) 3)", 5);
+        eval_expr_eq("1 + 2 + 3", "(+ (+ 1 2) 3)", 6);
+        eval_expr_eq("1 - 1 - 1", "(- (- 1 1) 1)", -1);
     }
 
     #[test]
     fn unary() {
-        test_eval("-1", "-1", -1);
-        test_eval("-----1", "-----1", -1);
-        test_eval("----1", "----1", 1);
-        test_eval("1 + -1", "(+ 1 -1)", 0);
-        test_eval("- 1 + - 2", "(+ -1 -2)", -3);
+        eval_expr_eq("-1", "-1", -1);
+        eval_expr_eq("-----1", "-----1", -1);
+        eval_expr_eq("----1", "----1", 1);
+        eval_expr_eq("1 + -1", "(+ 1 -1)", 0);
+        eval_expr_eq("- 1 + - 2", "(+ -1 -2)", -3);
     }
 
     #[test]
     fn bool() {
-        test_eval("true", "true", 1);
-        test_eval("false", "false", 0);
+        eval_expr_eq("true", "true", 1);
+        eval_expr_eq("false", "false", 0);
         parse_expr_to_s_expr("!true", "!true");
         parse_expr_to_s_expr("!!!true", "!!!true");
         parse_expr_to_s_expr("!!!!true", "!!!!true");
@@ -730,7 +789,28 @@ mod test {
         test_program_error(")");
         test_program_error("((())");
         test_program_error("\"\\");
-        // parse_expr_to_s_expr("(1", "(ERROR[),EoF])");
+    }
+
+    #[test]
+    fn bad_expr_test() {
+        test_expr_error("let sneed = \"Seed and Feed\";\nlet abc = 1 + 2", "ERROR[Expression,let]");
+        test_expr_error("return foo;", "ERROR[Expression,return]");
+        test_expr_error("\"aaaa", "ERROR[Expression,LEXING ERROR]");
+        test_expr_error("(", "ERROR[Expression,EoF]");
+        test_expr_error(")", "ERROR[Expression,)]");
+        test_expr_error("((())", "ERROR[Expression,)]");
+        test_expr_error("\"\\", "ERROR[Expression,LEXING ERROR]");
+        test_expr_error("(1", "ERROR[),EoF]");
+
+        test_expr_error("if", "ERROR[(,EoF]");
+        test_expr_error("if ()", "ERROR[Expression,)]");
+        test_expr_error("if (1 < 2)", "ERROR[{,EoF]");
+        test_expr_error("if (1 < 2) {", "ERROR[Expression,EoF]");
+        test_expr_error("if (1 < 2) {} else {", "ERROR[Expression,EoF]");
+
+        test_expr_error("fn", "ERROR[(,EoF]");
+        test_expr_error("fn()", "ERROR[{,EoF]");
+        test_expr_error("fn() {", "ERROR[Expression,EoF]");
     }
 
     #[test]
@@ -749,13 +829,21 @@ mod test {
 
     #[test]
     fn func_test() {
-        parse_expr_to_s_expr("fn(x, y) { x + y; };", "func(x, y, ) {(+ x y);}");
-        parse_expr_to_s_expr("fn(x, y) {};"        , "func(x, y, ) {}");
-        parse_expr_to_s_expr("fn(x, y,) {};"       , "func(x, y, ) {}");
+        parse_expr_to_s_expr("fn(x, y) { x + y; };", "func(x, y) {(+ x y);}");
+        parse_expr_to_s_expr("fn(x, y) {};"        , "func(x, y) {}");
+        parse_expr_to_s_expr("fn(x, y,) {};"       , "func(x, y) {}");
         parse_expr_to_s_expr("fn() {};"            , "func() {}");
         parse_expr_to_s_expr("fn() { 5; };"        , "func() {5;}");
-        // parse_expr_to_s_expr("sdasdwqd + wqd ", "aa");
-        // test_program("fn(x, y) { x + y; };");
+    }
+
+    #[test]
+    fn call_expr() {
+        parse_expr_to_s_expr("foo(x, y)", "foo(x, y)");
+        parse_expr_to_s_expr("foo(x, x + x)", "foo(x, (+ x x))");
+        parse_expr_to_s_expr("foo((x + (x)))", "foo(((+ x (x))))");
+        parse_expr_to_s_expr("foo()", "foo()");
+
+        parse_expr_to_s_expr("fn(x) {}(1)", "func(x) {}(1)");
     }
 }
 

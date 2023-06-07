@@ -97,7 +97,7 @@ impl Display for TokenType {
             TokenType::String(s)     => s,
             TokenType::Number(_)     => unreachable!(),
             TokenType::Identifier(d) => d,
-            TokenType::Error         => "ERROR",
+            TokenType::Error         => "LEXING ERROR",
             TokenType::EoF           => "EoF",
         })
     }
