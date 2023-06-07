@@ -39,10 +39,9 @@ impl Tokenizer {
         let token = self.peek();
         self.pos += token.len;
         self.trim();
-        return token
+        token
     }
 
-    #[must_use]
     pub fn assert_next(&mut self, typ: TokenType) -> Result<(), Error> {
         let token = self.next();
         if token.typ != typ {
@@ -52,46 +51,6 @@ impl Tokenizer {
             Ok(())
         }
     }
-
-    // #[must_use]
-    // pub fn try_next(&mut self, typ: TokenType) -> Result<Token, (TokenType, Token)> {
-    //     if let Some(token) = self.next() {
-    //         if token.typ != typ {
-    //             Err((typ, token))
-    //         } else {
-    //             Ok(token)
-    //         }
-    //     } else {
-    //         panic!("No new token found!")
-    //     }
-    // }
-
-    // #[must_use]
-    // pub fn assert_next_type(&mut self, typ: TokenType) -> Result<(), (TokenType, Token)> {
-    //     if let Some(token) = self.next() {
-    //         if discriminant(&token.typ) == discriminant(&typ) {
-    //             Err((typ, token))
-    //         } else {
-    //             Ok(())
-    //         }
-    //     } else {
-    //         panic!("No new token found!")
-    //     }
-    // }
-
-    // #[must_use]
-    // pub fn try_next_type(&mut self, typ: TokenType) -> Result<Token, (TokenType, Token)> {
-    //     if let Some(token) = self.next() {
-    //         if discriminant(&token.typ) == discriminant(&typ) {
-    //             Err((typ, token))
-    //         } else {
-    //             Ok(token)
-    //         }
-    //     } else {
-    //         panic!("No new token found!")
-    //     }
-    // }
-
 
     pub fn peek(&self) -> Token {
         let pos = self.pos;
@@ -162,11 +121,11 @@ impl Tokenizer {
     fn parse_number(&self) -> Token {
         let pos = self.pos;
         let s = self.source.get(pos..).unwrap();
-        assert!(s.chars().next().unwrap().is_digit(10));
+        assert!(s.chars().next().unwrap().is_ascii_digit());
 
         let len = s
             .char_indices()
-            .take_while(|(_, c)| c.is_digit(10))
+            .take_while(|(_, c)| c.is_ascii_digit())
             .last()
             .map(|(i, _)| i + 1)
             .unwrap();
@@ -218,7 +177,7 @@ impl Tokenizer {
             if c == '"' {
                 let len = i + 1;
                 return Token {
-                    typ: TokenType::String(s[..len].to_string()),
+                    typ: TokenType::String(s[1..len-1].to_string()),
                     pos,
                     len,
                 };
@@ -240,23 +199,67 @@ mod test {
     #[test]
     fn test_tokens() {
         use TokenType::*;
+
         let chars = vec![
-            (LeftParen , "(".to_string()),
-            (RightParen, ")".to_string()),
-            (Minus     , "-".to_string()),
-            (Plus      , "+".to_string()),
-            (Slash     , "/".to_string()),
-            (Star      , "*".to_string()),
-            // (Number    , "9".to_string()),
+        // Single-character tokens.
+            (LeftParen         , "(".to_string()),
+            (RightParen        , ")".to_string()),
+            (LeftBrace         , "{".to_string()),
+            (RightBrace        , "}".to_string()),
+            (Comma             , ",".to_string()),
+            (Dot               , ".".to_string()),
+            (Minus             , "-".to_string()),
+            (Plus              , "+".to_string()),
+            (Semicolon         , ";".to_string()),
+            (Star              , "*".to_string()),
+            (Slash             , "/".to_string()),
+
+            // Comparators
+            (GreaterEqual      , ">=".to_string()),
+            (Greater           , ">".to_string()),
+            (LessEqual         , "<=".to_string()),
+            (Less              , "<".to_string()),
+            (BangEqual         , "!=".to_string()),
+            (Bang              , "!".to_string()),
+            (EqualEqual        , "==".to_string()),
+            (Equal             , "=".to_string()),
+
+            // Keywords
+            (And               , "and".to_string()),
+            (Else              , "else".to_string()),
+            (False             , "false".to_string()),
+            (Fun               , "fn".to_string()),
+            (If                , "if".to_string()),
+            (Let               , "let".to_string()),
+            (Or                , "or".to_string()),
+            (Return            , "return".to_string()),
+            (True              , "true".to_string()),
+
+            // Number
+            (Number(12345)       , "12345".to_string()),
+
+            // String
+            (String("foo".into())    , r#""foo""#.to_string()),
+
+            // Identifier
+            (Identifier("bar".into()), "bar".to_string()),
+
+            // Error
+            (Error             , "\"".to_string()),
+
+            // EoF
+            (EoF               , "".to_string()),
         ];
 
         for (compare_token, s) in chars.into_iter() {
             let tokenizer = Tokenizer::new(s);
             let mut tokens: Vec<_> = tokenizer.into_iter().collect();
-            assert_eq!(tokens.len(), 2);
-            tokens.pop().unwrap();
-            let token = tokens.pop().unwrap();
-            assert_eq!(compare_token, token.typ);
+            println!("{:#?}", tokens);
+            assert_eq!(TokenType::EoF, tokens.pop().unwrap().typ);
+            if let Some(token) = tokens.pop() {
+                assert_eq!(compare_token, token.typ);
+            }
+            assert!(tokens.is_empty());
         }
 
     }
