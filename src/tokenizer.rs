@@ -1,4 +1,4 @@
-use crate::{tokens::{Token, TokenType}, ExpectedError};
+use crate::{tokens::{Token, TokenType}, Error};
 // use std::mem::discriminant;
 
 #[derive(Clone)]
@@ -43,11 +43,11 @@ impl Tokenizer {
     }
 
     #[must_use]
-    pub fn assert_next(&mut self, typ: TokenType) -> Result<(), ExpectedError> {
+    pub fn assert_next(&mut self, typ: TokenType) -> Result<(), Error> {
         let token = self.next();
         if token.typ != typ {
             let typ = typ.to_string();
-            Err(ExpectedError((typ, token)))
+            Err(Error((typ, token)))
         } else {
             Ok(())
         }

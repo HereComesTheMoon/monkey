@@ -1,11 +1,13 @@
 mod tokenizer;
 mod tokens;
+use std::assert_eq;
 use std::env;
 
 use std::fmt::Display;
 use std::fs;
 use std::io;
 use std::io::{BufRead, Write};
+use std::println;
 use std::process;
 use tokenizer::Tokenizer;
 use tokens::{Token, TokenType};
@@ -17,11 +19,6 @@ fn main() {
     match args.len() {
         0 => run_prompt(),
         1 => run_file(&args[0]),
-        2 => {
-                let content = fs::read_to_string(&args[0]).unwrap();
-                let parser = Parser::new(content);
-                Program::new(parser).unwrap();
-            }
         _ => {
             println!("Bad arguments! {:?}", args);
             process::exit(64);
@@ -41,17 +38,57 @@ fn run_prompt() {
     print!("> ");
     io::stdout().flush().unwrap();
     for line in stdin.lock().lines() {
-        let line = line.unwrap();
+        let mut line = line.unwrap();
+        if line.is_empty() { continue }
+        if !line.ends_with(';') {
+            line.push(';');
+        }
         run(line);
         print!("\n> ");
         io::stdout().flush().unwrap();
     }
 }
 
-fn run(source: String) -> Result<Expr, ExpectedError> {
-    // let sc = Scanner::new(source);
-    let mut parser = Parser::new(source);
-    parser.parse()
+fn run(source: String) {
+    let parser = Parser::new(source.clone());
+    let program = Program::new(parser);
+    match program {
+        Ok(prg) => println!("{:?}", prg),
+        Err(e) => {
+            let err = locate_error(&source, e);
+            println!("\n{}", format_error(err));
+        }
+    }
+}
+
+fn locate_error(source: &str, err: Error) -> ErrorLocation {
+    let pos = err.0.1.pos;
+    let len = err.0.1.len;
+    let t = Tokenizer::new(source[pos..pos+len].into()).next().typ;
+    assert_eq!(t, err.0.1.typ);
+    let mut line = 0;
+    let mut col = 0;
+    for (k, c) in source.char_indices() {
+        col += 1;
+        if c == '\n' {
+            line += 1;
+            col = 0;
+        }
+        if k <= err.0.1.pos {
+            break
+        }
+    }
+    ErrorLocation { source: source.to_owned(), err, line, col }
+}
+
+fn format_error(err: ErrorLocation) -> String {
+    let ErrorLocation { source, err, line, col } = err;
+    let Error((expected, token)) = err;
+
+    let left = source[..token.pos].rfind('\n').unwrap_or(0);
+    let right = source[token.pos..].rfind('\n').unwrap_or(source.len());
+    let context = &source[left..right];
+    format!("Error found in line {line}, column {col}. Error: Expected {expected}, got {token}! Context: \n\n{context}\n")
 }
 
 #[derive(Debug)]
@@ -83,7 +120,7 @@ struct ReturnStatement {
 }
 
 impl Program {
-    pub fn new(mut parser: Parser) -> Result<Self, ExpectedError> {
+    pub fn new(mut parser: Parser) -> Result<Self, Error> {
         let mut statements = vec![];
         loop {
             if parser.tokenizer.peek().typ == TokenType::EoF { break }
@@ -107,7 +144,7 @@ impl Parser {
         }
     }
 
-    pub fn parse_statement(&mut self) -> Result<Statement, ExpectedError> {
+    pub fn parse_statement(&mut self) -> Result<Statement, Error> {
         let token = self.tokenizer.peek();
         let res = match self.tokenizer.peek().typ {
             TokenType::Let => self.parse_let_statement(),
@@ -118,14 +155,14 @@ impl Parser {
         res
     }
 
-    pub fn parse_let_statement(&mut self) -> Result<Statement, ExpectedError> {
+    pub fn parse_let_statement(&mut self) -> Result<Statement, Error> {
         self.tokenizer.assert_next(TokenType::Let)?;
 
         let name = if let Token { typ: TokenType::Identifier(name), .. } = self.tokenizer.peek() {
             self.tokenizer.next();
             name.clone()
         } else {
-            return Err(ExpectedError(("Identifier".to_owned(), self.tokenizer.next().clone())))
+            return Err(Error(("Identifier".to_owned(), self.tokenizer.next().clone())))
         };
 
         self.tokenizer.assert_next(TokenType::Equal)?;
@@ -137,7 +174,7 @@ impl Parser {
         Ok(Statement::Let(LetStatement { name, val }))
     }
 
-    pub fn parse_expr_statement(&mut self) -> Result<Statement, ExpectedError> {
+    pub fn parse_expr_statement(&mut self) -> Result<Statement, Error> {
         // let val = self.parse().is_err()?;
         let val = self.parse()?;
 
@@ -146,7 +183,7 @@ impl Parser {
         Ok(Statement::Expr(ExprStatement { val }))
     }
 
-    pub fn parse_return_statement(&mut self) -> Result<Statement, ExpectedError> {
+    pub fn parse_return_statement(&mut self) -> Result<Statement, Error> {
         self.tokenizer.assert_next(TokenType::Return)?;
         let val = self.parse()?;
         self.tokenizer.assert_next(TokenType::Semicolon)?;
@@ -156,17 +193,17 @@ impl Parser {
 }
 
 impl Parser {
-    pub fn parse(&mut self) -> Result<Expr, ExpectedError> {
+    pub fn parse(&mut self) -> Result<Expr, Error> {
         self.parse_bp(0)
     }
 
-    fn parse_bp(&mut self, min_bp: u8) -> Result<Expr, ExpectedError> {
+    fn parse_bp(&mut self, min_bp: u8) -> Result<Expr, Error> {
         let token = self.tokenizer.next();
         println!("Start: {:?}", token);
         let mut lhs = match token.typ {
             TokenType::Bang            => Expr::Unary(self.parse_unary(token.typ)?),
-            TokenType::EoF             => return Err(ExpectedError(("Expression".into(), token))),
-            TokenType::Error           => return Err(ExpectedError(("Expression".into(), token))),
+            TokenType::EoF             => return Err(Error(("Expression".into(), token))),
+            TokenType::Error           => return Err(Error(("Expression".into(), token))),
             TokenType::False           => Expr::Bool(false),
             TokenType::Fun             => self.parse_func()?,
             TokenType::Identifier(val) => Expr::Identifier(val.clone()),
@@ -177,7 +214,7 @@ impl Parser {
             TokenType::Number(num)     => Expr::Integer(num),
             TokenType::String(val)     => Expr::String(val.clone()),
             TokenType::True            => Expr::Bool(true),
-            _                          => return Err(ExpectedError(("Expression".into(), token))),
+            _                          => return Err(Error(("Expression".into(), token))),
         };
 
         if self.tokenizer.peek().typ == TokenType::LeftParen {
@@ -229,7 +266,7 @@ impl Parser {
         Ok(lhs)
     }
 
-    fn parse_block(&mut self) -> Result<Expr, ExpectedError> {
+    fn parse_block(&mut self) -> Result<Expr, Error> {
         // self.tokenizer.assert_next(TokenType::LeftBrace)?;
         let mut statements = vec![];
         loop {
@@ -243,7 +280,7 @@ impl Parser {
         Ok(Expr::Block(statements))
     }
 
-    fn parse_func(&mut self) -> Result<Expr, ExpectedError> {
+    fn parse_func(&mut self) -> Result<Expr, Error> {
         self.tokenizer.assert_next(TokenType::LeftParen)?;
         let mut pars = vec![];
         loop {
@@ -253,7 +290,7 @@ impl Parser {
             let token = self.tokenizer.next();
             match token.typ {
                 TokenType::Identifier(par) => pars.push(par),
-                _                          => return Err(ExpectedError(("Parameter".to_owned(), token)))
+                _                          => return Err(Error(("Parameter".to_owned(), token)))
             }
             if self.tokenizer.peek().typ == TokenType::Comma {
                 self.tokenizer.next();
@@ -268,11 +305,12 @@ impl Parser {
         Ok(Expr::Function(FunctionLiteral { pars, body }))
     }
 
-    fn parse_func_call(&mut self, func: Expr) -> Result<Expr, ExpectedError> {
+    fn parse_func_call(&mut self, func: Expr) -> Result<Expr, Error> {
         self.tokenizer.assert_next(TokenType::LeftParen)?;
         let mut args = vec![];
         loop {
             if self.tokenizer.peek().typ == TokenType::RightParen {
+                self.tokenizer.next();
                 break;
             }
             let arg = self.parse()?;
@@ -285,7 +323,7 @@ impl Parser {
         Ok(Expr::FunctionCall(FunctionCall { func, args }))
     }
 
-    fn parse_if(&mut self) -> Result<Expr, ExpectedError> {
+    fn parse_if(&mut self) -> Result<Expr, Error> {
         self.tokenizer.assert_next(TokenType::LeftParen)?;
         let cond = Box::new(self.parse_bp(0)?);
         self.tokenizer.assert_next(TokenType::RightParen)?;
@@ -302,13 +340,13 @@ impl Parser {
         
     }
 
-    fn parse_grouping(&mut self) -> Result<Expr, ExpectedError> {
+    fn parse_grouping(&mut self) -> Result<Expr, Error> {
         let res = Box::new(self.parse_bp(0)?);
         self.tokenizer.assert_next(TokenType::RightParen)?;
         Ok(Expr::Grouping(res))
     }
 
-    fn parse_unary(&mut self, typ: TokenType) -> Result<UnaryExpr, ExpectedError> {
+    fn parse_unary(&mut self, typ: TokenType) -> Result<UnaryExpr, Error> {
         let op = match typ {
             TokenType::Minus => UnaryType::Minus,
             TokenType::Bang => UnaryType::Bang,
@@ -329,7 +367,7 @@ enum Expr {
     Binary(BinaryExpr),
     Block(Vec<Statement>),
     Bool(bool),
-    Error(ExpectedError),
+    Error(Error),
     Function(FunctionLiteral),
     Grouping(Box<Expr>),
     Identifier(String),
@@ -400,7 +438,7 @@ enum UnaryType {
 }
 
 impl Expr {
-    pub fn is_err(self) -> Result<Expr, ExpectedError> {
+    pub fn is_err(self) -> Result<Expr, Error> {
         match self {
             Expr::Error(err) => Err(err),
             _ => Ok(self),
@@ -614,21 +652,29 @@ impl UnaryExpr {
 
 
 #[derive(Debug)]
-struct ExpectedError((String, Token));
+struct Error((String, Token));
 
-impl From<(TokenType, Token)> for ExpectedError {
+#[derive(Debug)]
+struct ErrorLocation {
+    source: String,
+    err: Error,
+    line: usize,
+    col: usize,
+}
+
+impl From<(TokenType, Token)> for Error {
     fn from(value: (TokenType, Token)) -> Self {
-        ExpectedError((value.0.to_string(), value.1))
+        Error((value.0.to_string(), value.1))
     }
 }
 
-impl From<ExpectedError> for Expr {
-    fn from(value: ExpectedError) -> Self {
-        Expr::Error(ExpectedError((value.0.0, value.0.1)))
+impl From<Error> for Expr {
+    fn from(value: Error) -> Self {
+        Expr::Error(Error((value.0.0, value.0.1)))
     }
 }
 
-impl Display for ExpectedError {
+impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "ERROR[{},{}]", self.0.0, self.0.1)
     }
