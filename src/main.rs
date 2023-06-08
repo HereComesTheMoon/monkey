@@ -1,7 +1,7 @@
 mod tokenizer;
 mod tokens;
 mod parser;
-use std::assert_eq;
+mod errors;
 use std::env;
 
 use std::fs;
@@ -9,8 +9,11 @@ use std::io;
 use std::io::{BufRead, Write};
 use std::println;
 use std::process;
-use tokenizer::Tokenizer;
-use parser::{Parser, Error, ErrorLocation};
+use parser::Parser;
+use errors::Error;
+
+use crate::errors::format_error;
+use crate::errors::locate_error;
 
 fn main() {
     println!("Hello, world!");
@@ -62,36 +65,6 @@ fn run(source: String) {
             println!();
         }
     }
-}
-
-fn locate_error(source: &str, err: Error) -> ErrorLocation {
-    let pos = err.0.1.pos;
-    let len = err.0.1.len;
-    let t = Tokenizer::new(source[pos..pos+len].into()).next().typ;
-    assert_eq!(t, err.0.1.typ);
-    let mut line = 0;
-    let mut col = 0;
-    for (k, c) in source.char_indices() {
-        col += 1;
-        if c == '\n' {
-            line += 1;
-            col = 0;
-        }
-        if err.0.1.pos <= k {
-            break
-        }
-    }
-    ErrorLocation { source: source.to_owned(), err, line, col }
-}
-
-fn format_error(err: ErrorLocation) -> String {
-    let ErrorLocation { source, err, line, col } = err;
-    let Error((expected, token)) = err;
-
-    let left = source[..token.pos].trim_end().rfind('\n').unwrap_or(0);
-    let right = source[token.pos..].find('\n').unwrap_or(source.len());
-    let context = &source[left..left+right+2];
-    format!("Error found in line {line}, column {col}. Error: Expected {expected}, got {token}! Context: \n\n{context}\n")
 }
 
 // impl Expr {

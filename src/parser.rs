@@ -2,6 +2,7 @@ use std::fmt::Display;
 use std::println;
 use crate::tokenizer::Tokenizer;
 use crate::tokens::{Token, TokenType};
+use crate::errors::Error;
 
 #[derive(Debug)]
 pub enum Statement {
@@ -488,35 +489,6 @@ impl UnaryType {
             UnaryType::Minus => ((), 11),
             UnaryType::Bang => ((), 11),
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct Error(pub(crate) (String, Token));
-
-#[derive(Debug)]
-pub struct ErrorLocation {
-    pub source: String,
-    pub err: Error,
-    pub line: usize,
-    pub col: usize,
-}
-
-impl From<(TokenType, Token)> for Error {
-    fn from(value: (TokenType, Token)) -> Self {
-        Error((value.0.to_string(), value.1))
-    }
-}
-
-impl From<Error> for Expr {
-    fn from(value: Error) -> Self {
-        Expr::Error(Error((value.0.0, value.0.1)))
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ERROR[{},{}]", self.0.0, self.0.1)
     }
 }
 
