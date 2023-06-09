@@ -20,7 +20,22 @@ enum Object {
     Null,
 }
 
-// struct Env(Vec<HashMap<String, Expr>>);
+struct Env(Vec<HashMap<String, Object>>);
+
+impl Env {
+    fn get(&self, name: &str) -> Option<&Object> {
+        for scope in self.0.iter().rev() {
+            if let Some(val) = scope.get(name) {
+                return Some(val)
+            }
+        }
+        None
+    }
+
+    fn drop_scope(&mut self) {
+        self.0.pop().unwrap();
+    }
+}
 
 trait Eval {
     fn eval(&self) -> Result<Object, IErr>;
