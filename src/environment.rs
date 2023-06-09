@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::parser::{Expr, Statement, BinaryExpr, BinaryType, UnaryType, UnaryExpr};
+use crate::parser::{Expr, Statement, BinaryExpr, BinaryType, UnaryType, UnaryExpr, IfExpr, BlockExpr};
 
 struct Program {
     prg: Vec<Statement>,
@@ -20,17 +20,21 @@ enum Object {
     Null,
 }
 
+trait Eval {
+    fn eval(&self) -> Object;
+}
+
 impl Expr {
     fn eval(&self) -> Object {
         match self {
             Expr::Binary(val)       => val.eval(),
-            Expr::Block(val)        => todo!(),
+            Expr::Block(val)        => val.eval(),
             Expr::Bool(val)         => Object::Boolean(*val),
             Expr::Error(val)        => todo!(),
             Expr::Function(val)     => todo!(),
             Expr::Grouping(val)     => val.as_ref().eval(),
             Expr::Identifier(val)   => todo!(),
-            Expr::If(val)           => todo!(),
+            Expr::If(val)           => val.eval(),
             Expr::Integer(val)      => Object::Integer(*val),
             Expr::String(val)       => Object::String(val.clone()),
             Expr::Unary(val)        => val.eval(),
@@ -81,6 +85,44 @@ impl UnaryExpr {
             (UnaryType::Minus, Object::Integer(val)) => Object::Integer(-val),
             _ => todo!(),
         }
+    }
+}
+
+impl Eval for IfExpr {
+    fn eval(&self) -> Object {
+        let cond = self.cond.eval();
+        let cond = match cond {
+            Object::Boolean(true)             => true,
+            Object::Boolean(false)            => false,
+            Object::Integer(0)                => false,
+            Object::Integer(_)                => true,
+            Object::String(s) if s.is_empty() => false,
+            Object::String(_)                 => true,
+            Object::Null                      => false,
+        };
+        if cond {
+            return self.cons.eval();
+        }
+        if self.alt.is_some() {
+            return self.alt.as_ref().unwrap().eval();
+        }
+        Object::Null
+    }
+}
+
+impl Eval for BlockExpr {
+    fn eval(&self) -> Object {
+        let mut last_val = Object::Null;
+        for stmt in self.statements.iter() {
+            match stmt {
+                Statement::Let(val)    => todo!(),
+                Statement::Expr(val)   => {
+                    last_val = val.val.eval();
+                }
+                Statement::Return(val) => return val.val.eval(),
+            }
+        }
+        last_val
     }
 }
 
@@ -141,6 +183,14 @@ mod test {
         eval_expr_test("!!!false", Ok(Object::Boolean(true)));
         eval_expr_test("true != false", Ok(Object::Boolean(true)));
         eval_expr_test("false == true", Ok(Object::Boolean(false)));
+
+        eval_expr_test("1 < 2", Ok(Object::Boolean(true)));
+        eval_expr_test("1 <= 2", Ok(Object::Boolean(true)));
+        eval_expr_test("1 >= 2", Ok(Object::Boolean(false)));
+        eval_expr_test("1 == 2", Ok(Object::Boolean(false)));
+        eval_expr_test("1 != 2", Ok(Object::Boolean(true)));
+        eval_expr_test("2 == 2", Ok(Object::Boolean(true)));
+        eval_expr_test("-1 <= 2 - 3", Ok(Object::Boolean(true)));
     }
 
     #[test]
@@ -153,5 +203,13 @@ mod test {
         eval_expr_test("3 / 2", Ok(Object::Integer(1)));
         eval_expr_test("-1 / 2", Ok(Object::Integer(0)));
         eval_expr_test("-6 * - 6", Ok(Object::Integer(36)));
+    }
+
+    #[test]
+    fn test_if_eval() {
+        eval_expr_test("if (true) { 123; }", Ok(Object::Integer(123)));
+        eval_expr_test("if (true) { 1; 2; 3; return 4; }", Ok(Object::Integer(4)));
+        eval_expr_test("if (false) { 1; 2; 3; return 4; }", Ok(Object::Null));
+        eval_expr_test("if (false) {} else { 1; }", Ok(Object::Integer(1)));
     }
 }

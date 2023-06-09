@@ -24,7 +24,7 @@ pub struct ExprStatement {
 
 #[derive(Debug)]
 pub struct ReturnStatement {
-    val: Expr,
+    pub val: Expr,
 }
 
 pub struct Parser {
@@ -177,7 +177,7 @@ impl Parser {
             statements.push(next_statement);
         }
         self.tokenizer.assert_next(TokenType::RightBrace)?;
-        Ok(Expr::Block(statements))
+        Ok(Expr::Block(BlockExpr { statements }))
     }
 
     fn parse_func(&mut self) -> Result<Expr, Error> {
@@ -265,7 +265,7 @@ impl Parser {
 #[derive(Debug)]
 pub enum Expr {
     Binary(BinaryExpr),
-    Block(Vec<Statement>),
+    Block(BlockExpr),
     Bool(bool),
     Error(Error),
     Function(FunctionLiteral),
@@ -303,7 +303,7 @@ pub enum BinaryType {
 
 #[derive(Debug)]
 pub struct BlockExpr {
-    statements: Vec<Statement>,
+    pub statements: Vec<Statement>,
 }
 
 #[derive(Debug)]
@@ -320,9 +320,9 @@ pub struct FunctionCall {
 
 #[derive(Debug)]
 pub struct IfExpr {
-    cond: Box<Expr>,
-    cons: Box<Expr>,
-    alt: Option<Box<Expr>>,
+    pub cond: Box<Expr>,
+    pub cons: Box<Expr>,
+    pub alt: Option<Box<Expr>>,
 }
 
 #[derive(Debug)]
@@ -382,7 +382,7 @@ impl Display for Expr {
             Expr::Block(val)      => {
                 let mut s = String::new();
                 s.extend(
-                    val.iter().map(|stmt| format!("{}", stmt))
+                    val.statements.iter().map(|stmt| format!("{}", stmt))
                 );
                 write!(f, "{{{}}}", s)
             },
