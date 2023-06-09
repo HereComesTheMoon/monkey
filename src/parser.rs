@@ -13,8 +13,8 @@ pub enum Statement {
 
 #[derive(Debug)]
 pub struct LetStatement {
-    name: String,
-    val: Expr,
+    pub name: String,
+    pub val: Expr,
 }
 
 #[derive(Debug)]
