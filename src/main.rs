@@ -1,6 +1,7 @@
 mod tokenizer;
 mod tokens;
 mod parser;
+mod environment;
 mod errors;
 use std::env;
 
@@ -67,53 +68,5 @@ fn run(source: String) {
     }
 }
 
-// impl Expr {
-//     pub fn eval(&self) -> i64 {
-//         match self {
-//             Expr::Integer(num)  => *num,
-//             Expr::Binary(b)     => b.eval(),
-//             Expr::Grouping(b)   => b.as_ref().eval(),
-//             Expr::Error(_)    => panic!(),
-//             Expr::Function(_)   => todo!(),
-//             Expr::Unary(val)    => val.eval(),
-//             Expr::String(_)     => todo!(),
-//             Expr::Identifier(_) => todo!(),
-//             Expr::Bool(val)     => *val as i64,
-//             Expr::Block(_)      => todo!(),
-//             Expr::If(_)         => todo!(),
-//             Expr::FunctionCall(_) => todo!(),
-//         }
-//     }
-// }
-
-// impl BinaryExpr {
-//     pub fn eval(&self) -> i64 {
-//         let left = self.left.eval();
-//         let right = self.right.eval();
-//         match self.op {
-//             BinaryType::Minus        => left - right,
-//             BinaryType::Plus         => left + right,
-//             BinaryType::Slash        => left / right,
-//             BinaryType::Star         => left * right,
-//             BinaryType::GreaterEqual => (left >= right).into(),
-//             BinaryType::Greater      => (left > right).into(),
-//             BinaryType::LessEqual    => (left <= right).into(),
-//             BinaryType::Less         => (left < right).into(),
-//             BinaryType::BangEqual    => (left != right).into(),
-//             BinaryType::EqualEqual   => (left == right).into(),
-//             BinaryType::And          => (left != 0 && right != 0).into(),
-//             BinaryType::Or           => (left != 0 || right != 0).into(),
-//         }
-//     }
-// }
-
-// impl UnaryExpr {
-//     pub fn eval(&self) -> i64 {
-//         match self.op {
-//             UnaryType::Minus => - self.val.eval(),
-//             UnaryType::Bang => !self.val.eval(),
-//         }
-//     }
-// }
 
 

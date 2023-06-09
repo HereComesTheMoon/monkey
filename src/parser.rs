@@ -19,7 +19,7 @@ pub struct LetStatement {
 
 #[derive(Debug)]
 pub struct ExprStatement {
-    val: Expr,
+    pub val: Expr,
 }
 
 #[derive(Debug)]
@@ -280,13 +280,13 @@ pub enum Expr {
 
 #[derive(Debug)]
 pub struct BinaryExpr {
-    left: Box<Expr>,
-    op: BinaryType,
-    right: Box<Expr>,
+    pub left: Box<Expr>,
+    pub op: BinaryType,
+    pub right: Box<Expr>,
 }
 
 #[derive(Debug)]
-enum BinaryType {
+pub enum BinaryType {
     And,
     BangEqual,
     EqualEqual,
@@ -327,12 +327,12 @@ pub struct IfExpr {
 
 #[derive(Debug)]
 pub struct UnaryExpr {
-    op: UnaryType,
-    val: Box<Expr>,
+    pub op: UnaryType,
+    pub val: Box<Expr>,
 }
 
-#[derive(Debug)]
-enum UnaryType {
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryType {
     Minus,
     Bang,
 }
