@@ -20,6 +20,8 @@ enum Object {
     Null,
 }
 
+// struct Env(Vec<HashMap<String, Expr>>);
+
 trait Eval {
     fn eval(&self) -> Object;
 }
@@ -70,6 +72,12 @@ impl BinaryExpr {
                     BinaryType::Slash        => Object::Integer(val_l / val_r),
                     BinaryType::Star         => Object::Integer(val_l * val_r),
                     _                        => todo!(),
+                }
+            }
+            (Object::String(val_l), Object::String(val_r)) => {
+                match self.op {
+                    BinaryType::Plus => Object::String(val_l + &val_r),
+                    _ => todo!(),
                 }
             }
             _ => todo!(),
