@@ -5,17 +5,17 @@ let fizzbuzz = fn(k) {
 	let fizz = (3 * (k / 3)) == k;
 	let buzz = (5 * (k / 5)) == k;
 	if (fizz and buzz) {
-		print("fizzbuzz");
+		put("fizzbuzz");
 	} else {
 		if (fizz) {
-			print("fizz");
+			put("fizz");
 		};
 		if (buzz) {
-			print("buzz");
+			put("buzz");
 		};
 	};
 	if (!(fizz or buzz)) {
-		print(k);
+		put(k);
 	};
 	fizz(k + 1);
 };

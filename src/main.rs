@@ -10,11 +10,14 @@ use std::io;
 use std::io::{BufRead, Write};
 use std::println;
 use std::process;
+
 use parser::Parser;
 use errors::Error;
+use environment::Env;
+use environment::Eval;
 
-use crate::errors::format_error;
-use crate::errors::locate_error;
+use errors::format_error;
+use errors::locate_error;
 
 fn main() {
     println!("Hello, world!");
@@ -60,10 +63,10 @@ fn run(source: String) {
         let err = locate_error(&source, e);
         println!("\n{}", format_error(err));
     } else {
-        for stmt in program.unwrap().iter() {
-            println!("{}", stmt);
-            println!("{:?}", stmt);
-            println!();
+        let outer_scope = parser::BlockExpr { statements: program.unwrap() };
+        let mut env = Env::new();
+        if let Err(e) = outer_scope.eval(&mut env) {
+            println!("Runtime error! {e:?}");
         }
     }
 }

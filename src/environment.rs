@@ -19,7 +19,7 @@ fn run(program: Vec<Statement>) -> Result<Object, IErr> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-enum Object {
+pub enum Object {
     Boolean(bool),
     Integer(i64),
     String(String),
@@ -42,13 +42,13 @@ impl Display for Object {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum BuiltIn {
+pub enum BuiltIn {
     Print,
     Len,
 }
 
 #[derive(Debug, Clone)]
-struct Func(FunctionLiteral);
+pub struct Func(FunctionLiteral);
 
 impl PartialEq for Func {
     fn eq(&self, other: &Self) -> bool {
@@ -60,10 +60,10 @@ impl Eq for Func {
     fn assert_receiver_is_total_eq(&self) {}
 }
 
-struct Env(Vec<HashMap<String, Object>>);
+pub struct Env(Vec<HashMap<String, Object>>);
 
 impl Env {
-    fn new() -> Env {
+    pub fn new() -> Env {
         let mut env = Env(vec![HashMap::new()]);
         env.bind("put", Object::BuiltIn(BuiltIn::Print));
         env.bind("len", Object::BuiltIn(BuiltIn::Len));
@@ -92,7 +92,7 @@ impl Env {
     }
 }
 
-trait Eval {
+pub trait Eval {
     fn eval(&self, env: &mut Env) -> Result<Object, IErr>;
 }
 
@@ -261,7 +261,7 @@ fn call_function(function: Object, args: Vec<Object>) -> Result<Object, IErr> {
 }
 
 #[derive(Debug)]
-enum IErr {
+pub enum IErr {
     Lookup,
     NotAFunction,
     ArgumentCount,
