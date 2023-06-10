@@ -4,25 +4,25 @@ use crate::tokenizer::Tokenizer;
 use crate::tokens::{Token, TokenType};
 use crate::errors::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Let(LetStatement),
     Expr(ExprStatement),
     Return(ReturnStatement),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LetStatement {
     pub name: String,
     pub val: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprStatement {
     pub val: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReturnStatement {
     pub val: Expr,
 }
@@ -262,7 +262,7 @@ impl Parser {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Binary(BinaryExpr),
     Block(BlockExpr),
@@ -278,14 +278,14 @@ pub enum Expr {
     FunctionCall(FunctionCall),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryExpr {
     pub left: Box<Expr>,
     pub op: BinaryType,
     pub right: Box<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BinaryType {
     And,
     BangEqual,
@@ -301,31 +301,31 @@ pub enum BinaryType {
     Star,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockExpr {
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionLiteral {
-    pars: Vec<String>,
-    body: Box<Expr>,
+    pub pars: Vec<String>,
+    pub body: Box<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionCall {
-    func: Box<Expr>,
-    args: Vec<Expr>,
+    pub func: Box<Expr>,
+    pub args: Vec<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfExpr {
     pub cond: Box<Expr>,
     pub cons: Box<Expr>,
     pub alt: Option<Box<Expr>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnaryExpr {
     pub op: UnaryType,
     pub val: Box<Expr>,

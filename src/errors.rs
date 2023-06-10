@@ -2,7 +2,7 @@ use std::fmt::Display;
 use crate::tokens::{Token, TokenType};
 use crate::parser::Expr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Error(pub(crate) (String, Token));
 
 #[derive(Debug)]

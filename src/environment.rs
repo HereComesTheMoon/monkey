@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use crate::parser::{Expr, Statement, BinaryExpr, BinaryType, UnaryType, UnaryExpr, IfExpr, BlockExpr};
+use std::{collections::HashMap, println, fmt::Display};
+use crate::parser::{Expr, Statement, BinaryExpr, BinaryType, UnaryType, UnaryExpr, IfExpr, BlockExpr, FunctionLiteral};
 
 struct Program {
     prg: Vec<Statement>,
@@ -24,13 +24,50 @@ enum Object {
     Integer(i64),
     String(String),
     Null,
+    Func(Func),
+    BuiltIn(BuiltIn),
+}
+
+impl Display for Object {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Object::Boolean(val) => write!(f, "{}", val),
+            Object::Integer(val) => write!(f, "{}", val),
+            Object::String(val)  => write!(f, "{}", val),
+            Object::Null         => write!(f, "NULL"),
+            Object::Func(val)    => write!(f, "FUNCTION"), // TODO: add for functions
+            Object::BuiltIn(val) => write!(f, "{val:?}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BuiltIn {
+    Print,
+    Len,
+}
+
+#[derive(Debug, Clone)]
+struct Func(FunctionLiteral);
+
+impl PartialEq for Func {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.pars == other.0.pars
+    }
+}
+
+impl Eq for Func {
+    fn assert_receiver_is_total_eq(&self) {}
 }
 
 struct Env(Vec<HashMap<String, Object>>);
 
 impl Env {
     fn new() -> Env {
-        Env(vec![HashMap::new()])
+        let mut env = Env(vec![HashMap::new()]);
+        env.bind("put", Object::BuiltIn(BuiltIn::Print));
+        env.bind("len", Object::BuiltIn(BuiltIn::Len));
+        env
     }
 
     fn get(&self, name: &str) -> Result<Object, IErr> {
@@ -39,7 +76,7 @@ impl Env {
                 return Ok(val.clone())
             }
         }
-        Err(IErr::LookupError)
+        Err(IErr::Lookup)
     }
 
     fn bind(&mut self, name: &str, value: Object) {
@@ -66,14 +103,21 @@ impl Eval for Expr {
             Expr::Block(val)        => val.eval(env),
             Expr::Bool(val)         => Ok(Object::Boolean(*val)),
             Expr::Error(val)        => todo!(),
-            Expr::Function(val)     => todo!(),
+            Expr::Function(val)     => Ok(Object::Func(Func(val.clone()))),
             Expr::Grouping(val)     => val.as_ref().eval(env),
             Expr::Identifier(val)   => env.get(val),
             Expr::If(val)           => val.eval(env),
             Expr::Integer(val)      => Ok(Object::Integer(*val)),
             Expr::String(val)       => Ok(Object::String(val.clone())),
             Expr::Unary(val)        => val.eval(env),
-            Expr::FunctionCall(val) => todo!(),
+            Expr::FunctionCall(val) => {
+                let function = val.func.eval(env)?;
+                let args: Vec<Object> = val.args
+                    .iter()
+                    .map(|expr| expr.eval(env))
+                    .collect::<Result<_,_>>()?;
+                call_function(function, args)
+            }
         }
     }
 }
@@ -135,6 +179,8 @@ impl Eval for IfExpr {
         let cond = match cond {
             Object::Boolean(true)             => true,
             Object::Boolean(false)            => false,
+            Object::BuiltIn(_)                => todo!(),
+            Object::Func(_)                   => todo!(),
             Object::Integer(0)                => false,
             Object::Integer(_)                => true,
             Object::String(s) if s.is_empty() => false,
@@ -176,9 +222,50 @@ impl Eval for BlockExpr {
     }
 }
 
+fn call_builtin(b: BuiltIn, args: Vec<Object>) -> Result<Object, IErr> {
+    match b {
+        BuiltIn::Print => {
+            for arg in args {
+                println!("{arg}");
+            }
+            Ok(Object::Null)
+        }
+        BuiltIn::Len   => {
+            if args.len() != 1 {
+                return Err(IErr::ArgumentCount)
+            }
+            match &args[0] {
+                Object::String(s) => Ok(Object::Integer(s.len() as i64)),
+                _ => Err(IErr::TypeError),
+            }
+        },
+    }
+    
+}
+
+fn call_function(function: Object, args: Vec<Object>) -> Result<Object, IErr> {
+    if let Object::BuiltIn(builtin) = function {
+        return call_builtin(builtin, args)
+    };
+    let Object::Func(Func(FunctionLiteral { pars, body })) = function else {
+        return Err(IErr::NotAFunction)
+    };
+    if pars.len() != args.len() {
+        return Err(IErr::ArgumentCount)
+    }
+    let mut env = Env::new();
+    for (par, arg) in std::iter::zip(pars, args) {
+        env.bind(&par, arg);
+    }
+    body.eval(&mut env)
+}
+
 #[derive(Debug)]
 enum IErr {
-    LookupError,
+    Lookup,
+    NotAFunction,
+    ArgumentCount,
+    TypeError,
 }
 
 // struct BinErr {
@@ -304,8 +391,22 @@ mod test {
     #[test]
     fn test_scoping() {
         eval_program_test("{ let a = 5; a; };", Ok(Object::Integer(5)));
-        eval_program_test("{ let a = 5; }; a;", Err(IErr::LookupError));
+        eval_program_test("{ let a = 5; }; a;", Err(IErr::Lookup));
         eval_program_test("let a = 5; { let b = 7; a + b; };", Ok(Object::Integer(12)));
-        // eval_program_test("let a = \"foo\"; let b = \"bar\"; let c = a + b; c;", Ok(Object::String("foobar".into())));
+    }
+
+    #[test]
+    fn test_func() {
+        eval_program_test("let foo = fn(a, b) { a + b; };", Ok(Object::Null));
+        eval_program_test("fn() {};", Ok(Object::Func(Func(FunctionLiteral { pars: vec![], body: Box::new(Expr::Block(BlockExpr { statements: vec![] }))}))));
+        eval_program_test("fn(){}();", Ok(Object::Null));
+        eval_program_test("fn(x, y){ x + y; }(1, 2);", Ok(Object::Integer(3)));
+        eval_program_test("let add = fn(x, y){ x + y; }; add(1 + 2 + 3, 4);", Ok(Object::Integer(10)));
+        eval_program_test("let add = fn(x, y){ x + y; }; let op = fn(foo, x, y) { foo(x, y); }; op(add, 5, 7);", Ok(Object::Integer(12)));
+    }
+
+    #[test]
+    fn built_ins() {
+        eval_program_test("put(\"Hello, World!\");", Ok(Object::Null));
     }
 }
