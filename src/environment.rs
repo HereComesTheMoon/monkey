@@ -26,6 +26,7 @@ pub enum Object {
     Null,
     Func(Func),
     BuiltIn(BuiltIn),
+    Return(Box<Object>)
 }
 
 impl Display for Object {
@@ -37,6 +38,7 @@ impl Display for Object {
             Object::Null         => write!(f, "NULL"),
             Object::Func(val)    => write!(f, "FUNCTION"), // TODO: add for functions
             Object::BuiltIn(val) => write!(f, "{val:?}"),
+            Object::Return(val)  => write!(f, "RETURN[{val:?}]"),
         }
     }
 }
@@ -76,6 +78,7 @@ impl Env {
                 return Ok(val.clone())
             }
         }
+        // println!("LOOKUP ERROR: Looked for {name}");
         Err(IErr::Lookup)
     }
 
@@ -116,7 +119,7 @@ impl Eval for Expr {
                     .iter()
                     .map(|expr| expr.eval(env))
                     .collect::<Result<_,_>>()?;
-                call_function(function, args)
+                call_function(function, args, env)
             }
         }
     }
@@ -185,6 +188,7 @@ impl Eval for IfExpr {
             Object::Integer(_)                => true,
             Object::String(s) if s.is_empty() => false,
             Object::String(_)                 => true,
+            Object::Return(_)                 => todo!(),
             Object::Null                      => false,
         };
         if cond {
@@ -206,15 +210,19 @@ impl Eval for BlockExpr {
                 Statement::Let(val)    => {
                     let value = val.val.eval(env)?;
                     env.bind(&val.name, value);
+                    last_val = Object::Null;
                 }
                 Statement::Expr(val)   => {
                     last_val = val.val.eval(env)?;
                 }
                 Statement::Return(val) => {
-                    let res = val.val.eval(env);
-                    env.drop_scope();
-                    return res;
+                    last_val = Object::Return(Box::new(val.val.eval(env)?));
+                    // return Ok(Object::Return(Box::new(res?)))
                 },
+            }
+            match last_val {
+                Object::Return(_) => break,
+                _ => ()
             }
         }
         env.drop_scope();
@@ -243,7 +251,7 @@ fn call_builtin(b: BuiltIn, args: Vec<Object>) -> Result<Object, IErr> {
     
 }
 
-fn call_function(function: Object, args: Vec<Object>) -> Result<Object, IErr> {
+fn call_function(function: Object, args: Vec<Object>, env: &mut Env) -> Result<Object, IErr> {
     if let Object::BuiltIn(builtin) = function {
         return call_builtin(builtin, args)
     };
@@ -253,11 +261,19 @@ fn call_function(function: Object, args: Vec<Object>) -> Result<Object, IErr> {
     if pars.len() != args.len() {
         return Err(IErr::ArgumentCount)
     }
-    let mut env = Env::new();
+    // let mut env = Env::new();
+    env.open_scope();
     for (par, arg) in std::iter::zip(pars, args) {
+        // println!("Here: {par:?}, {arg:?}");
         env.bind(&par, arg);
     }
-    body.eval(&mut env)
+    // println!("{:?}", env.0);
+    let res = body.eval(env);
+    env.drop_scope();
+    match res {
+        Ok(Object::Return(val)) => Ok(*val),
+        _ => res,
+    }
 }
 
 #[derive(Debug)]
@@ -327,9 +343,11 @@ mod test {
     }
 
     fn eval_program_test(source: &str, wanted: Result<Object, IErr>) {
-        let res = eval_program(source);
+        println!();
         println!("SOURCE: {source}");
-        println!("WANTED: {wanted:?}. GOT: {res:?}");
+        println!("WANT: {wanted:?}");
+        let res = eval_program(source);
+        println!("GOT: {res:?}");
         if wanted.is_err() {
             assert!(res.is_err());
             return
@@ -375,8 +393,8 @@ mod test {
     #[test]
     fn test_if_eval() {
         eval_expr_test("if (true) { 123; }", Ok(Object::Integer(123)));
-        eval_expr_test("if (true) { 1; 2; 3; return 4; }", Ok(Object::Integer(4)));
-        eval_expr_test("if (false) { 1; 2; 3; return 4; }", Ok(Object::Null));
+        eval_expr_test("if (true) { 1; 2; 3; 4; }", Ok(Object::Integer(4)));
+        eval_expr_test("if (false) { 1; 2; 3; 4; }", Ok(Object::Null));
         eval_expr_test("if (false) {} else { 1; }", Ok(Object::Integer(1)));
     }
 
@@ -408,5 +426,12 @@ mod test {
     #[test]
     fn built_ins() {
         eval_program_test("put(\"Hello, World!\");", Ok(Object::Null));
+    }
+
+    #[test]
+    fn test_return() {
+        eval_program_test("return 1;", Ok(Object::Return(Box::new(Object::Integer(1)))));
+        eval_program_test("return 1; 2;", Ok(Object::Return(Box::new(Object::Integer(1)))));
+        eval_program_test("let foo = fn() { { return 1; }; 2;}; foo();", Ok(Object::Integer(1)));
     }
 }
