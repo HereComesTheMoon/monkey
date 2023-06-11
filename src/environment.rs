@@ -284,10 +284,6 @@ pub enum IErr {
     TypeError,
 }
 
-// struct BinErr {
-    
-// }
-
 #[cfg(test)]
 mod test {
     use std::{assert_eq, println};
@@ -433,5 +429,22 @@ mod test {
         eval_program_test("return 1;", Ok(Object::Return(Box::new(Object::Integer(1)))));
         eval_program_test("return 1; 2;", Ok(Object::Return(Box::new(Object::Integer(1)))));
         eval_program_test("let foo = fn() { { return 1; }; 2;}; foo();", Ok(Object::Integer(1)));
+    }
+
+    #[test]
+    fn test_ackermann() {
+        let ack = "let A = fn(m, n) { if (m == 0) { return n + 1; }; if (n == 0) { return A(m - 1, 1); }; A(m-1, A(m, n-1)); };".to_owned();
+        let results = [
+            [1, 2, 3, 4, 5,],
+            [2, 3, 4, 5, 6,],
+            [3, 5, 7, 9, 11,],
+            [5, 13, 29, 61, 125,],
+        ];
+
+        let m = 2;
+        let n = 3;
+
+        let source = format!("{ack}\nA({m},{n});");
+        eval_program_test(&source, Ok(Object::Integer(results[m][n])));
     }
 }

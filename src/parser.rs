@@ -99,7 +99,7 @@ impl Parser {
 impl Parser {
     fn parse(&mut self, min_bp: u8) -> Result<Expr, Error> {
         let token = self.tokenizer.next();
-        println!("Start: {:?}", token);
+        // println!("Start: {:?}", token);
         let mut lhs = match token.typ {
             TokenType::Bang            => Expr::Unary(self.parse_unary(token.typ)?),
             TokenType::EoF             => return Err(Error(("Expression".into(), token))),
@@ -123,7 +123,7 @@ impl Parser {
 
         loop {
             let token = self.tokenizer.peek();
-            println!("Loop: {:?}", token);
+            // println!("Loop: {:?}", token);
             let op = match token.typ {
                 TokenType::And          => BinaryType::And,
                 TokenType::BangEqual    => BinaryType::BangEqual,
