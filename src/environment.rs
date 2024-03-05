@@ -447,4 +447,35 @@ mod test {
         let source = format!("{ack}\nA({m},{n});");
         eval_program_test(&source, Ok(Object::Integer(results[m][n])));
     }
+
+    #[test]
+    fn test_closure() {
+        let source = "
+            let newAdder = fn(x) {
+                fn(y) { x + y; };
+            };
+            let addTwo = newAdder(2);
+            addTwo(2);
+        ";
+        eval_program_test(&source, Ok(Object::Integer(4)));
+    }
+
+    #[test]
+    #[ignore]
+    fn bench() {
+        let source = "let fibonacci = fn(x) {
+            if (x == 0) { 
+                    0;
+            } else {
+        		if (x == 1) { 
+                    return 1;
+                } else { 
+                    fibonacci(x - 1) + fibonacci(x - 2);
+                };
+            };
+        };
+        fibonacci(25);";
+        
+        eval_program_test(&source, Ok(Object::Integer(75025)));
+    }
 }
